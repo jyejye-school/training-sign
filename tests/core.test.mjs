@@ -49,9 +49,9 @@ test('명단은 부서별로 묶고 이름순으로 정렬한다', () => {
 });
 
 test('개인정보 안내 필수값을 검사한다', () => {
-  const valid = { schoolName: '학교', subtitle: '연수', privacyPurpose: '목적', privacyItems: '항목', privacyRetention: '삭제', privacyContact: '담당자' };
+  const valid = { schoolName: '학교', subtitle: '연수', privacyPurpose: '목적', privacyItems: '항목', privacyRetention: '삭제' };
   assert.equal(isPrivacyReady(valid), true);
-  assert.equal(isPrivacyReady({ ...valid, privacyContact: '' }), false);
+  assert.equal(isPrivacyReady({ ...valid, privacyRetention: '' }), false);
 });
 
 test('관리자 비밀번호는 숫자 4자리 또는 문자·숫자 포함 10자 이상을 허용한다', () => {

@@ -41,8 +41,7 @@ const demoData = {
     brandColor: '#315c54',
     privacyPurpose: '교직원 연수 참여 여부 확인 및 서명등록부 작성',
     privacyItems: '부서, 성명, 서명 이미지, 서명 날짜와 시각',
-    privacyRetention: 'PDF와 엑셀 보관 완료 후 시스템 원본을 삭제합니다.',
-    privacyContact: '교무기획부 000-0000-0000'
+    privacyRetention: 'PDF와 엑셀 보관 완료 후 시스템 원본을 삭제합니다.'
   },
   trainings: [
     { id: 'demo-training-1', title: '2026 개인정보 보호 연수', target: '전 교직원', date: todaySeoul(), daily: false, startTime: '', endTime: '', active: true, sortOrder: 1 },
@@ -348,7 +347,6 @@ function renderPrivacy() {
     ['수집 목적', settings.privacyPurpose],
     ['수집 항목', settings.privacyItems],
     ['보관·삭제', settings.privacyRetention],
-    ['담당자', settings.privacyContact],
     ['이용 제한', '연수 참여 확인용이며, 본인 인증이 필요한 법적 전자서명에는 사용할 수 없습니다.']
   ];
   $('privacyDetails').innerHTML = fields.map(([title, value]) => `<dt>${escapeHtml(title)}</dt><dd>${escapeHtml(value || '관리자가 아직 입력하지 않았습니다.')}</dd>`).join('');
@@ -622,7 +620,6 @@ function fillSettingsForm() {
   $('settingsPrivacyPurpose').value = settings.privacyPurpose || '';
   $('settingsPrivacyItems').value = settings.privacyItems || '';
   $('settingsPrivacyRetention').value = settings.privacyRetention || '';
-  $('settingsPrivacyContact').value = settings.privacyContact || '';
 }
 
 async function saveSettings(event) {
@@ -634,8 +631,7 @@ async function saveSettings(event) {
     brandColor: $('settingsBrandColor').value,
     privacyPurpose: $('settingsPrivacyPurpose').value.trim(),
     privacyItems: $('settingsPrivacyItems').value.trim(),
-    privacyRetention: $('settingsPrivacyRetention').value.trim(),
-    privacyContact: $('settingsPrivacyContact').value.trim()
+    privacyRetention: $('settingsPrivacyRetention').value.trim()
   };
   if (!isPrivacyReady(settings)) return showToast('개인정보 안내 항목을 모두 입력해 주세요.');
   try {

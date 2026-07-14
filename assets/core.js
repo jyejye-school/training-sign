@@ -81,7 +81,7 @@ export function splitNames(value) {
 }
 
 export function isPrivacyReady(settings = {}) {
-  return ['schoolName', 'subtitle', 'privacyPurpose', 'privacyItems', 'privacyRetention', 'privacyContact']
+  return ['schoolName', 'subtitle', 'privacyPurpose', 'privacyItems', 'privacyRetention']
     .every(key => String(settings[key] || '').trim().length > 0);
 }
 

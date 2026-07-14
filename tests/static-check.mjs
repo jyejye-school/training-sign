@@ -20,6 +20,7 @@ expect(!/unsafe-inline|unsafe-eval/.test(index), 'CSP에 unsafe 설정이 있습
 expect(/get_public_data/.test(backend) && /submit_signature/.test(backend), '공개 API가 누락되었습니다.');
 expect(/requireAdminSession_/.test(backend), '관리자 세션 검증이 누락되었습니다.');
 expect(/\^\\d\{4\}\$/.test(backend), '숫자 4자리 관리자 비밀번호 검증이 누락되었습니다.');
+expect(!/privacyContact|settingsPrivacyContact/.test(index + app + backend), '개인정보 담당자·연락처 항목이 남아 있습니다.');
 expect(/LockService/.test(backend), '동시 제출 잠금이 누락되었습니다.');
 expect(/setTrashed\(true\)/.test(backend), '원본 파일 삭제 처리가 누락되었습니다.');
 expect(/function onOpen\(\)/.test(backend) && /🖊️ 전자서명 관리/.test(backend), '연결형 시트 관리 메뉴가 누락되었습니다.');

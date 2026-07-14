@@ -5,7 +5,7 @@
  */
 
 const APP = Object.freeze({
-  VERSION: '1.1.0',
+  VERSION: '1.1.1',
   TIME_ZONE: 'Asia/Seoul',
   DATA_FILE: '학교 연수 전자서명 데이터',
   GUIDE_SHEET: '사용설명서',
@@ -31,7 +31,7 @@ const SHEETS = Object.freeze({
 
 const SETTING_KEYS = Object.freeze([
   'schoolName', 'subtitle', 'notice', 'brandColor',
-  'privacyPurpose', 'privacyItems', 'privacyRetention', 'privacyContact'
+  'privacyPurpose', 'privacyItems', 'privacyRetention'
 ]);
 
 const INSTANCE_PROPERTIES = Object.freeze([
@@ -215,8 +215,7 @@ function initializeSystem() {
       brandColor: '#315c54',
       privacyPurpose: '',
       privacyItems: '',
-      privacyRetention: '',
-      privacyContact: ''
+      privacyRetention: ''
     });
   }
   ensureCleanupTrigger_();
@@ -909,7 +908,7 @@ function ensureGuideSheet_(spreadsheet, rebuild) {
   sheet.getRange('B18:E18').merge().setValue('운영할 때 지킬 점').setFontSize(14).setFontWeight('bold').setBackground('#F2D9B8');
   const cautions = [
     '공유 링크에는 본인 인증이 없습니다. 학교 내부에서만 공유하고 유출되면 공유 키를 교체하세요.',
-    '개인정보 안내의 목적·항목·보관기간·담당자를 모두 입력하기 전에는 연수를 활성화하지 마세요.',
+    '개인정보 안내의 목적·항목·보관기간을 모두 입력하기 전에는 연수를 활성화하지 마세요.',
     'PDF와 XLSX가 모두 생성된 것을 확인한 뒤에만 해당 날짜의 원본 서명 기록과 PNG를 삭제하세요.',
     '이 시스템은 연수 참여 확인용이며 공식 동의·결재·법적 전자서명 용도로 사용하지 않습니다.'
   ];
@@ -1028,7 +1027,7 @@ function writeSettings_(settings) {
 }
 
 function privacyReady_(settings) {
-  return ['schoolName', 'subtitle', 'privacyPurpose', 'privacyItems', 'privacyRetention', 'privacyContact']
+  return ['schoolName', 'subtitle', 'privacyPurpose', 'privacyItems', 'privacyRetention']
     .every(function(key) { return Boolean(String(settings[key] || '').trim()); });
 }
 
