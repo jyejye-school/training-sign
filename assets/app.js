@@ -87,6 +87,58 @@ function showStatus(message = '', isError = true) {
   setHidden(banner, !message);
 }
 
+function requestActionDialog({ title, message = '', confirmLabel = '확인', danger = false, fields = [] }) {
+  return new Promise(resolve => {
+    document.querySelector('.action-dialog-overlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.className = 'action-dialog-overlay';
+    const fieldMarkup = fields.map(field => `
+      <label>${escapeHtml(field.label)}
+        <input name="${escapeHtml(field.name)}" value="${escapeHtml(field.value || '')}" maxlength="${Number(field.maxLength || 100)}" required>
+      </label>`).join('');
+    overlay.innerHTML = `
+      <div class="action-dialog-card" role="dialog" aria-modal="true" aria-labelledby="actionDialogTitle">
+        <form>
+          <h3 id="actionDialogTitle">${escapeHtml(title)}</h3>
+          ${message ? `<p>${escapeHtml(message)}</p>` : ''}
+          ${fieldMarkup}
+          <div class="button-row">
+            <button class="button secondary" type="button" data-action="cancel">취소</button>
+            <button class="button ${danger ? 'danger' : 'primary'}" type="submit">${escapeHtml(confirmLabel)}</button>
+          </div>
+        </form>
+      </div>`;
+    const form = overlay.querySelector('form');
+    const finish = value => {
+      overlay.remove();
+      resolve(value);
+    };
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      const values = {};
+      fields.forEach(field => { values[field.name] = form.elements[field.name].value.trim(); });
+      finish(fields.length ? values : true);
+    });
+    overlay.querySelector('[data-action="cancel"]').addEventListener('click', () => finish(null));
+    overlay.addEventListener('click', event => {
+      if (event.target === overlay) finish(null);
+    });
+    overlay.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        finish(null);
+      }
+    });
+    ($('adminDialog').open ? $('adminDialog') : document.body).append(overlay);
+    (overlay.querySelector('input') || overlay.querySelector('button[type="submit"]')).focus();
+  });
+}
+
+async function requestConfirmation(options) {
+  return Boolean(await requestActionDialog(options));
+}
+
 async function rpc(action, payload = {}, options = {}) {
   if (DEMO) return demoRpc(action, payload);
   if (!API_URL || API_URL.includes('__APPS_SCRIPT_WEB_APP_URL__')) {
@@ -319,7 +371,14 @@ async function submitSignature() {
   }
   const date = state.publicData.serverDate || todaySeoul();
   const duplicateKey = localDuplicateKey(state.selectedTraining.id, state.selectedStaff.id, date);
-  if (localStorage.getItem(duplicateKey) && !confirm('이 기기에서 이미 서명한 기록이 있습니다. 그래도 서버에 확인할까요?')) return;
+  if (localStorage.getItem(duplicateKey)) {
+    const proceed = await requestConfirmation({
+      title: '이미 서명한 기록이 있습니다',
+      message: '이 기기에서 같은 연수에 서명한 기록이 있습니다. 서버에서 중복 여부를 다시 확인할까요?',
+      confirmLabel: '서버에서 확인'
+    });
+    if (!proceed) return;
+  }
   const button = $('submitSignature');
   button.disabled = true;
   button.textContent = '등록 중…';
@@ -513,7 +572,13 @@ async function handleTrainingListClick(event) {
   try {
     if (button.dataset.action === 'edit-training') return openTrainingForm(training);
     if (button.dataset.action === 'delete-training') {
-      if (!confirm(`'${training.title}' 연수를 삭제할까요? 기존 서명 기록은 남습니다.`)) return;
+      const confirmed = await requestConfirmation({
+        title: '연수를 삭제할까요?',
+        message: `'${training.title}' 연수를 삭제합니다. 기존 서명 기록은 남습니다.`,
+        confirmLabel: '연수 삭제',
+        danger: true
+      });
+      if (!confirmed) return;
       await rpc('delete_training', { trainingId: training.id });
     } else {
       await rpc('move_training', { trainingId: training.id, direction: button.dataset.action === 'move-up' ? 'up' : 'down' });
@@ -554,13 +619,24 @@ async function handleStaffListClick(event) {
   if (!person) return;
   try {
     if (button.dataset.action === 'edit-staff') {
-      const department = prompt('부서', person.department);
-      if (department === null) return;
-      const name = prompt('성명', person.name);
-      if (name === null) return;
-      await rpc('update_staff', { person: { id: person.id, department: department.trim(), name: name.trim() } });
+      const edited = await requestActionDialog({
+        title: '구성원 정보 수정',
+        confirmLabel: '수정 저장',
+        fields: [
+          { name: 'department', label: '부서', value: person.department, maxLength: 50 },
+          { name: 'name', label: '성명', value: person.name, maxLength: 50 }
+        ]
+      });
+      if (!edited) return;
+      await rpc('update_staff', { person: { id: person.id, department: edited.department, name: edited.name } });
     } else {
-      if (!confirm(`${person.department} ${person.name} 구성원을 삭제할까요? 기존 서명 기록은 남습니다.`)) return;
+      const confirmed = await requestConfirmation({
+        title: '구성원을 삭제할까요?',
+        message: `${person.department} ${person.name} 구성원을 삭제합니다. 기존 서명 기록은 남습니다.`,
+        confirmLabel: '구성원 삭제',
+        danger: true
+      });
+      if (!confirmed) return;
       await rpc('delete_staff', { staffId: person.id });
     }
     await refreshAdminData();
@@ -600,7 +676,12 @@ async function importRosterFile(event) {
     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
     const people = normalizeRosterRows(rows);
     if (!people.length) throw new Error('부서와 성명 열을 찾지 못했습니다. 양식을 확인해 주세요.');
-    if (!confirm(`${people.length}명을 가져올까요? 이미 등록된 같은 부서·성명은 건너뜁니다.`)) return;
+    const confirmed = await requestConfirmation({
+      title: `${people.length}명을 가져올까요?`,
+      message: '이미 등록된 같은 부서·성명은 건너뜁니다.',
+      confirmLabel: '명단 가져오기'
+    });
+    if (!confirmed) return;
     const result = await rpc('save_staff_batch', { people });
     await refreshAdminData();
     status.textContent = `${result.added}명 등록, ${result.skipped}명 건너뜀`;
@@ -668,7 +749,14 @@ async function handleRecordClick(event) {
   const row = event.target.closest('[data-record-id]');
   if (!button || !row) return;
   const record = state.records.find(item => item.id === row.dataset.recordId);
-  if (!record || !confirm(`${record.department} ${record.name}의 서명 기록과 이미지 파일을 삭제할까요?`)) return;
+  if (!record) return;
+  const confirmed = await requestConfirmation({
+    title: '서명 기록을 삭제할까요?',
+    message: `${record.department} ${record.name}의 서명 기록과 이미지 파일을 함께 삭제합니다.`,
+    confirmLabel: '기록 삭제',
+    danger: true
+  });
+  if (!confirmed) return;
   try {
     await rpc('delete_record', { recordId: record.id });
     await loadRecords();
@@ -683,7 +771,13 @@ function renderShareAdmin() {
 }
 
 async function rotateShareToken() {
-  if (!confirm('공유 키를 교체하면 기존 링크와 QR은 즉시 사용할 수 없게 됩니다. 교체할까요?')) return;
+  const confirmed = await requestConfirmation({
+    title: '공유 키를 교체할까요?',
+    message: '기존 링크와 QR은 즉시 사용할 수 없게 됩니다.',
+    confirmLabel: '공유 키 교체',
+    danger: true
+  });
+  if (!confirmed) return;
   try {
     const data = await rpc('rotate_share_token', { frontendUrl: baseUrl });
     state.adminData.shareToken = data.shareToken;

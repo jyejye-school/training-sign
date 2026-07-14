@@ -112,6 +112,13 @@ h2, h3 { letter-spacing: -.025em; }
 .purge-confirm-card label { display: grid; gap: .55rem; font-weight: 750; }
 .purge-confirm-card label strong { overflow-wrap: anywhere; color: var(--danger); }
 .purge-confirm-card .button-row { justify-content: flex-end; }
+.action-dialog-overlay { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 1rem; border-radius: inherit; background: rgba(20, 35, 31, .68); }
+.action-dialog-card { width: min(100%, 520px); padding: 1.25rem; border-radius: 18px; background: #fff; box-shadow: 0 24px 70px rgba(19, 37, 32, .3); }
+.action-dialog-card form { display: grid; gap: 1rem; }
+.action-dialog-card h3, .action-dialog-card p { margin: 0; }
+.action-dialog-card p { color: var(--muted); line-height: 1.6; }
+.action-dialog-card label { display: grid; gap: .45rem; font-weight: 750; }
+.action-dialog-card .button-row { justify-content: flex-end; }
 .admin-header { margin: 0; padding: 1rem 1.25rem; border-bottom: 1px solid var(--line); }
 .admin-tabs { display: flex; gap: .35rem; overflow-x: auto; padding: .65rem 1.1rem; border-bottom: 1px solid var(--line); background: #f8faf9; }
 .admin-tabs button { flex: 0 0 auto; border: 0; border-radius: 10px; background: transparent; padding: .65rem .8rem; color: #5f6e69; font-weight: 800; }
