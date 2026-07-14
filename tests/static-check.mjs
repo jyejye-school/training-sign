@@ -33,6 +33,8 @@ expect(/SpreadsheetApp\.openById\(PropertiesService\.getScriptProperties\(\)\.ge
 expect(/hideDataSheets_/.test(backend) && /사용설명서/.test(backend), '사용설명서 표시·데이터 탭 숨김 처리가 누락되었습니다.');
 expect(/setProperties\(secrets, false\)/.test(backend), '재초기화가 기존 Script Properties를 보존하지 않습니다.');
 expect(/outputType/.test(index + app + backend) && /previewFileId/.test(backend), '선택 출력 형식 또는 비공개 미리보기 작업 정보가 누락되었습니다.');
+expect(/pagenum=CENTER/.test(backend), 'PDF 페이지 번호가 가운데에 표시되도록 설정되지 않았습니다.');
+expect(/base \+ 1\)\.setWrap\(true\)/.test(backend), '긴 부서명이 출력에서 잘리지 않도록 줄바꿈 처리되지 않았습니다.');
 expect(/recordPrintOpened_/.test(backend) && /canPurgeExport_/.test(backend), '인쇄 기록 또는 출력별 원본 삭제 차단이 누락되었습니다.');
 expect(/frame-src 'self' blob:/.test(index), '비공개 Blob PDF 미리보기 CSP가 누락되었습니다.');
 expect(fs.existsSync(path.join(root, 'vendor/qrcode.js')), 'QR 라이브러리가 없습니다.');

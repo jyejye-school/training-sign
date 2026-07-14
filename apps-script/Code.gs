@@ -5,7 +5,7 @@
  */
 
 const APP = Object.freeze({
-  VERSION: '1.2.0',
+  VERSION: '1.2.1',
   TIME_ZONE: 'Asia/Seoul',
   DATA_FILE: '학교 연수 전자서명 데이터',
   GUIDE_SHEET: '사용설명서',
@@ -709,6 +709,7 @@ function prepareExportSheet_(sheet, training, date, roster, columns, showRate, s
     sheet.getRange(position.row, base + 2).setRichTextValue(richText.build()).setWrap(true).setHorizontalAlignment('center');
     sheet.getRange(position.row, base, 1, 4).setBorder(true, true, true, true, true, true).setVerticalAlignment('middle');
     sheet.getRange(position.row, base).setHorizontalAlignment('center');
+    sheet.getRange(position.row, base + 1).setWrap(true).setHorizontalAlignment('center').setFontSize(columns === 3 ? 7 : 8);
     sheet.getRange(position.row, base + 3).setHorizontalAlignment('center');
     if (!row.fileId) sheet.getRange(position.row, base + 3).setFontColor('#b4473d').setFontSize(8);
     sheet.setRowHeight(position.row, columns === 3 ? 52 : 58);
@@ -816,7 +817,7 @@ function exportSpreadsheetBlob_(spreadsheet, format) {
   const auth = { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: false };
   if (format === 'xlsx') return UrlFetchApp.fetch(base + '?format=xlsx', auth).getBlob();
   const output = spreadsheet.getSheetByName('서명등록부');
-  const url = base + '?format=pdf&gid=' + output.getSheetId() + '&size=A4&portrait=true&fitw=true&sheetnames=false&printtitle=false&pagenumbers=true&gridlines=false&fzr=true&top_margin=0.35&bottom_margin=0.4&left_margin=0.3&right_margin=0.3';
+  const url = base + '?format=pdf&gid=' + output.getSheetId() + '&size=A4&portrait=true&fitw=true&sheetnames=false&printtitle=false&pagenum=CENTER&gridlines=false&fzr=true&top_margin=0.35&bottom_margin=0.4&left_margin=0.3&right_margin=0.3';
   return UrlFetchApp.fetch(url, auth).getBlob();
 }
 
