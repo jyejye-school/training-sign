@@ -787,11 +787,51 @@ async function downloadExport(jobId, format) {
   setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 }
 
+function requestPurgeConfirmation(expected) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'purge-confirm-overlay';
+    overlay.innerHTML = `
+      <div class="purge-confirm-card" role="dialog" aria-modal="true" aria-labelledby="purgeConfirmTitle">
+        <form>
+          <h3 id="purgeConfirmTitle">서명 원본을 삭제할까요?</h3>
+          <p>PDF와 엑셀 파일을 내려받아 보관했는지 확인해 주세요. 삭제한 서명 기록과 이미지는 되돌릴 수 없습니다.</p>
+          <label>계속하려면 연수명을 그대로 입력하세요.
+            <strong>${escapeHtml(expected)}</strong>
+            <input name="confirmation" autocomplete="off" maxlength="100" required>
+          </label>
+          <div class="button-row">
+            <button class="button secondary" type="button" data-action="cancel">취소</button>
+            <button class="button danger" type="submit" disabled>원본 삭제</button>
+          </div>
+        </form>
+      </div>`;
+    const form = overlay.querySelector('form');
+    const input = overlay.querySelector('input');
+    const submit = overlay.querySelector('button[type="submit"]');
+    const finish = value => {
+      overlay.remove();
+      resolve(value);
+    };
+    input.addEventListener('input', () => { submit.disabled = input.value !== expected; });
+    form.addEventListener('submit', event => {
+      event.preventDefault();
+      finish(input.value);
+    });
+    overlay.querySelector('[data-action="cancel"]').addEventListener('click', () => finish(''));
+    overlay.addEventListener('click', event => {
+      if (event.target === overlay) finish('');
+    });
+    $('adminDialog').append(overlay);
+    input.focus();
+  });
+}
+
 async function purgeOriginals(job) {
   const training = state.adminData.trainings.find(item => item.id === job.trainingId);
   const expected = training?.title || job.trainingTitle;
-  const confirmation = prompt(`PDF와 엑셀 파일을 내려받아 보관했는지 확인해 주세요.\n원본을 삭제하려면 연수명을 그대로 입력하세요.\n\n${expected}`);
-  if (confirmation !== expected) return showToast('연수명이 일치하지 않아 삭제하지 않았습니다.');
+  const confirmation = await requestPurgeConfirmation(expected);
+  if (!confirmation) return;
   try {
     const result = await rpc('purge_originals', { jobId: job.jobId, confirmation });
     await refreshAdminData();

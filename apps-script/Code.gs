@@ -353,7 +353,7 @@ function getPublicData_(shareToken) {
     .sort(staffSort_)
     .map(publicStaff_);
   const trainings = readRows_(SHEETS.TRAININGS)
-    .filter(row => bool_(row.active) && (bool_(row.daily) || row.date === today))
+    .filter(row => bool_(row.active) && (bool_(row.daily) || sheetDateText_(row.date) === today))
     .sort(orderSort_)
     .map(publicTraining_);
   return { settings: settings, staff: staff, trainings: trainings, privacyReady: true, serverDate: today };
@@ -388,7 +388,7 @@ function submitSignature_(request) {
     const freshTraining = findRow_(SHEETS.TRAININGS, 'id', trainingId);
     const freshPerson = findRow_(SHEETS.STAFF, 'id', staffId);
     validateSigningWindow_(freshTraining, freshPerson);
-    const duplicate = readRows_(SHEETS.SIGNATURES).some(row => row.trainingId === trainingId && row.staffId === staffId && row.signDate === date);
+    const duplicate = readRows_(SHEETS.SIGNATURES).some(row => row.trainingId === trainingId && row.staffId === staffId && sheetDateText_(row.signDate) === date);
     if (duplicate) apiError_('DUPLICATE', '[' + freshTraining.title + '] ' + freshPerson.name + '님은 오늘 이미 서명을 완료했습니다.');
     appendObject_(SHEETS.SIGNATURES, {
       id: Utilities.getUuid(), trainingId: trainingId, staffId: staffId,
@@ -408,10 +408,13 @@ function validateSigningWindow_(training, person) {
   if (!training || !bool_(training.active)) apiError_('TRAINING_CLOSED', '현재 서명할 수 없는 연수입니다.');
   if (!person || !bool_(person.active)) apiError_('STAFF_NOT_FOUND', '구성원 명단에서 확인할 수 없습니다.');
   const today = today_();
-  if (!bool_(training.daily) && training.date !== today) apiError_('TRAINING_DATE', '오늘 서명할 수 있는 연수가 아닙니다.');
+  const trainingDate = sheetDateText_(training.date);
+  const startTime = sheetTimeText_(training.startTime, false);
+  const endTime = sheetTimeText_(training.endTime, false);
+  if (!bool_(training.daily) && trainingDate !== today) apiError_('TRAINING_DATE', '오늘 서명할 수 있는 연수가 아닙니다.');
   const nowTime = formatDate_(new Date(), 'HH:mm');
-  if (training.startTime && nowTime < training.startTime) apiError_('TOO_EARLY', '아직 서명 가능 시간이 아닙니다. ' + training.startTime + '부터 서명할 수 있습니다.');
-  if (training.endTime && nowTime > training.endTime) apiError_('TOO_LATE', '서명 가능 시간이 종료되었습니다.');
+  if (startTime && nowTime < startTime) apiError_('TOO_EARLY', '아직 서명 가능 시간이 아닙니다. ' + startTime + '부터 서명할 수 있습니다.');
+  if (endTime && nowTime > endTime) apiError_('TOO_LATE', '서명 가능 시간이 종료되었습니다.');
 }
 
 function getAdminData_() {
@@ -423,7 +426,9 @@ function getAdminData_() {
   const staff = readRows_(SHEETS.STAFF).sort(staffSort_).map(publicStaff_);
   const trainings = readRows_(SHEETS.TRAININGS).sort(orderSort_).map(publicTraining_);
   const signatures = readRows_(SHEETS.SIGNATURES);
-  const exports = readRows_(SHEETS.EXPORTS).sort(function(a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); });
+  const exports = readRows_(SHEETS.EXPORTS)
+    .sort(function(a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); })
+    .map(publicJob_);
   return {
     settings: readSettings_(), staff: staff, trainings: trainings, exports: exports,
     shareToken: shareToken, shareUrl: buildShareUrl_(frontendUrl, shareToken),
@@ -570,9 +575,9 @@ function listRecords_(trainingId, date) {
   const id = id_(trainingId, '연수');
   const signDate = validDate_(date);
   const records = readRows_(SHEETS.SIGNATURES)
-    .filter(function(row) { return row.trainingId === id && row.signDate === signDate; })
+    .filter(function(row) { return row.trainingId === id && sheetDateText_(row.signDate) === signDate; })
     .sort(function(a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); })
-    .map(function(row) { return { id: row.id, trainingId: row.trainingId, signDate: row.signDate, signTime: row.signTime, department: row.department, name: row.name }; });
+    .map(function(row) { return { id: row.id, trainingId: row.trainingId, signDate: sheetDateText_(row.signDate), signTime: sheetTimeText_(row.signTime, true), department: row.department, name: row.name }; });
   return { records: records };
 }
 
@@ -637,12 +642,12 @@ function startExport_(request) {
 }
 
 function buildExportRoster_(trainingId, date, sort) {
-  const signatures = readRows_(SHEETS.SIGNATURES).filter(function(row) { return row.trainingId === trainingId && row.signDate === date; });
+  const signatures = readRows_(SHEETS.SIGNATURES).filter(function(row) { return row.trainingId === trainingId && sheetDateText_(row.signDate) === date; });
   const signedByStaff = {};
   signatures.forEach(function(row) { signedByStaff[row.staffId] = row; });
   const roster = readRows_(SHEETS.STAFF).filter(function(row) { return bool_(row.active); }).map(function(person) {
     const signature = signedByStaff[person.id];
-    return { staffId: person.id, department: person.department, name: person.name, time: signature ? signature.signTime : '', fileId: signature ? signature.imageFileId : '' };
+    return { staffId: person.id, department: person.department, name: person.name, time: signature ? sheetTimeText_(signature.signTime, true) : '', fileId: signature ? signature.imageFileId : '' };
   });
   roster.sort(function(a, b) {
     if (sort === 'name') return compareKo_(a.name, b.name) || compareKo_(a.department, b.department);
@@ -737,7 +742,7 @@ function finalizeExport_(rowNumber, job) {
   const pdfUrl = base + '?format=pdf&gid=' + output.getSheetId() + '&size=A4&portrait=true&fitw=true&sheetnames=false&printtitle=false&pagenumbers=true&gridlines=false&fzr=true';
   const xlsxUrl = base + '?format=xlsx';
   const exportFolder = DriveApp.getFolderById(PropertiesService.getScriptProperties().getProperty('EXPORT_FOLDER_ID'));
-  const safeName = safeFileName_(job.trainingTitle + '_' + job.date + '_서명등록부');
+  const safeName = safeFileName_(job.trainingTitle + '_' + sheetDateText_(job.date) + '_서명등록부');
   const pdfFile = exportFolder.createFile(UrlFetchApp.fetch(pdfUrl, auth).getBlob().setName(safeName + '.pdf'));
   const xlsxFile = exportFolder.createFile(UrlFetchApp.fetch(xlsxUrl, auth).getBlob().setName(safeName + '.xlsx'));
   DriveApp.getFileById(spreadsheet.getId()).setTrashed(true);
@@ -773,7 +778,7 @@ function purgeOriginals_(jobId, confirmation) {
   assertFileExists_(job.xlsxFileId);
   const sheet = sheet_(SHEETS.SIGNATURES);
   const records = readRowsWithNumbers_(SHEETS.SIGNATURES)
-    .filter(function(item) { return item.data.trainingId === job.trainingId && item.data.signDate === job.date; })
+    .filter(function(item) { return item.data.trainingId === job.trainingId && sheetDateText_(item.data.signDate) === sheetDateText_(job.date); })
     .sort(function(a, b) { return b.rowNumber - a.rowNumber; });
   let deleted = 0;
   let failed = 0;
@@ -812,7 +817,7 @@ function updateExportJob_(rowNumber, changes) {
 
 function publicJob_(job) {
   return {
-    jobId: job.jobId, trainingId: job.trainingId, trainingTitle: job.trainingTitle, date: job.date,
+    jobId: job.jobId, trainingId: job.trainingId, trainingTitle: job.trainingTitle, date: sheetDateText_(job.date),
     sort: job.sort, columns: number_(job.columns), showRate: bool_(job.showRate), status: job.status,
     progress: number_(job.progress), total: number_(job.total), createdAt: job.createdAt, updatedAt: job.updatedAt,
     error: job.error || '', purgedAt: job.purgedAt || ''
@@ -1037,8 +1042,8 @@ function publicStaff_(row) {
 
 function publicTraining_(row) {
   return {
-    id: String(row.id), title: String(row.title), target: String(row.target || ''), date: String(row.date), daily: bool_(row.daily),
-    startTime: String(row.startTime || ''), endTime: String(row.endTime || ''), active: bool_(row.active), sortOrder: number_(row.sortOrder)
+    id: String(row.id), title: String(row.title), target: String(row.target || ''), date: sheetDateText_(row.date), daily: bool_(row.daily),
+    startTime: sheetTimeText_(row.startTime, false), endTime: sheetTimeText_(row.endTime, false), active: bool_(row.active), sortOrder: number_(row.sortOrder)
   };
 }
 
@@ -1132,6 +1137,20 @@ function today_() {
 
 function formatDate_(date, pattern) {
   return Utilities.formatDate(date, APP.TIME_ZONE, pattern);
+}
+
+function sheetDateText_(value) {
+  if (value instanceof Date && !isNaN(value.getTime())) return formatDate_(value, 'yyyy-MM-dd');
+  return String(value || '').trim();
+}
+
+function sheetTimeText_(value, includeSeconds) {
+  if (value instanceof Date && !isNaN(value.getTime())) return formatDate_(value, includeSeconds ? 'HH:mm:ss' : 'HH:mm');
+  const text = String(value || '').trim();
+  if (!text) return '';
+  const match = text.match(/^(\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (!match) return text;
+  return match[1] + ':' + match[2] + (includeSeconds ? ':' + (match[3] || '00') : '');
 }
 
 function formatKoreanDate_(date) {
