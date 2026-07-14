@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#315c54">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://script.google.com https://script.googleusercontent.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'">
+  <title>학교 연수 전자서명</title>
+  <link rel="stylesheet" href="assets/styles.css">
+  <script src="assets/config.js"></script>
+  <script src="vendor/qrcode.js" defer></script>
+  <script src="vendor/xlsx.full.min.js" defer></script>
+  <script type="module" src="assets/app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#mainContent">본문으로 바로가기</a>
+  <header class="site-header">
+    <div class="brand-mark" aria-hidden="true">서명</div>
+    <div class="brand-copy">
+      <p id="schoolName" class="school-name">학교 연수 전자서명</p>
+      <p id="schoolSubtitle" class="school-subtitle">연수 참여 확인</p>
+    </div>
+    <div class="header-actions">
+      <button id="shareButton" class="icon-button" type="button" aria-label="공유 링크와 QR 보기">공유</button>
+      <button id="adminButton" class="icon-button" type="button">관리자</button>
+    </div>
+  </header>
+
+  <main id="mainContent" class="page-shell">
+    <section id="statusBanner" class="status-banner hidden" role="status"></section>
+    <section id="noticePanel" class="notice-panel hidden" aria-labelledby="noticeTitle">
+      <h2 id="noticeTitle">안내</h2>
+      <p id="noticeText"></p>
+    </section>
+
+    <ol id="stepper" class="stepper" aria-label="서명 단계">
+      <li class="active" data-step="1"><span>1</span>연수</li>
+      <li data-step="2"><span>2</span>본인 선택</li>
+      <li data-step="3"><span>3</span>서명</li>
+    </ol>
+
+    <section id="loadingPanel" class="card centered">
+      <div class="spinner" aria-hidden="true"></div>
+      <h1>서명 화면을 준비하고 있습니다</h1>
+      <p>잠시만 기다려 주세요.</p>
+    </section>
+
+    <section id="invalidPanel" class="card centered hidden">
+      <div class="empty-icon" aria-hidden="true">!</div>
+      <h1>올바른 공유 링크가 아닙니다</h1>
+      <p id="invalidMessage">담당자에게 새 링크나 QR을 받아 주세요.</p>
+    </section>
+
+    <section id="trainingPanel" class="card hidden" aria-labelledby="trainingHeading">
+      <div class="eyebrow">1단계</div>
+      <h1 id="trainingHeading">어떤 연수에 참여하셨나요?</h1>
+      <p class="helper">오늘 서명할 수 있는 연수를 선택해 주세요.</p>
+      <div id="trainingList" class="choice-grid"></div>
+      <div id="noTraining" class="empty-state hidden">현재 서명할 수 있는 연수가 없습니다.</div>
+    </section>
+
+    <section id="personPanel" class="card hidden" aria-labelledby="personHeading">
+      <div class="eyebrow">2단계</div>
+      <h1 id="personHeading">본인을 선택해 주세요</h1>
+      <p id="selectedTrainingLabel" class="selection-summary"></p>
+      <div class="form-grid two-column">
+        <label>부서
+          <select id="departmentSelect"><option value="">부서를 선택하세요</option></select>
+        </label>
+        <label>성명
+          <select id="staffSelect" disabled><option value="">먼저 부서를 선택하세요</option></select>
+        </label>
+      </div>
+      <div class="button-row split">
+        <button id="backToTraining" class="button secondary" type="button">이전</button>
+        <button id="goToSignature" class="button primary" type="button" disabled>서명하러 가기</button>
+      </div>
+    </section>
+
+    <section id="signaturePanel" class="card hidden" aria-labelledby="signatureHeading">
+      <div class="eyebrow">3단계</div>
+      <h1 id="signatureHeading">아래 칸에 서명해 주세요</h1>
+      <p id="signerSummary" class="selection-summary"></p>
+      <div class="canvas-toolbar">
+        <span>손가락이나 마우스로 작성하세요</span>
+        <div>
+          <button id="undoSignature" class="text-button" type="button">되돌리기</button>
+          <button id="clearSignature" class="text-button" type="button">모두 지우기</button>
+        </div>
+      </div>
+      <div class="signature-frame">
+        <canvas id="signatureCanvas" aria-label="서명 입력란"></canvas>
+        <span class="signature-guide" aria-hidden="true">서명</span>
+      </div>
+      <label class="check-row">
+        <input id="privacyConfirm" type="checkbox">
+        <span>연수 참여 확인을 위한 개인정보 처리 안내를 확인했습니다.</span>
+      </label>
+      <button id="openPrivacy" class="text-button privacy-link" type="button">개인정보 처리 안내 보기</button>
+      <div class="button-row split">
+        <button id="backToPerson" class="button secondary" type="button">이전</button>
+        <button id="submitSignature" class="button primary" type="button">서명 제출</button>
+      </div>
+    </section>
+
+    <section id="successPanel" class="card centered hidden" aria-live="polite">
+      <div class="success-icon" aria-hidden="true">✓</div>
+      <h1>서명이 등록되었습니다</h1>
+      <p id="successMessage"></p>
+      <button id="signAnother" class="button secondary" type="button">처음 화면으로</button>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <button id="footerPrivacy" class="footer-link" type="button">개인정보 처리 안내</button>
+    <span>연수 참여 확인용 시스템</span>
+  </footer>
+
+  <dialog id="shareDialog" class="dialog compact-dialog">
+    <form method="dialog" class="dialog-head">
+      <div><p class="eyebrow">공유</p><h2>링크와 QR</h2></div>
+      <button class="close-button" aria-label="닫기">×</button>
+    </form>
+    <div id="qrCode" class="qr-box" aria-label="공유 QR 코드"></div>
+    <label>공유 링크
+      <input id="shareUrl" type="text" readonly>
+    </label>
+    <button id="copyShareUrl" class="button primary full" type="button">링크 복사</button>
+    <p class="warning-note">이 링크를 가진 사람은 명단을 볼 수 있습니다. 학교 내부에서만 공유해 주세요.</p>
+  </dialog>
+
+  <dialog id="privacyDialog" class="dialog compact-dialog">
+    <form method="dialog" class="dialog-head">
+      <div><p class="eyebrow">안내</p><h2>개인정보 처리 안내</h2></div>
+      <button class="close-button" aria-label="닫기">×</button>
+    </form>
+    <dl id="privacyDetails" class="detail-list"></dl>
+  </dialog>
+
+  <dialog id="adminLoginDialog" class="dialog compact-dialog">
+    <form method="dialog" class="dialog-head">
+      <div><p class="eyebrow">관리자</p><h2 id="adminLoginTitle">관리자 로그인</h2></div>
+      <button class="close-button" aria-label="닫기">×</button>
+    </form>
+    <form id="adminLoginForm">
+      <label id="setupCodeLabel" class="hidden">초기 설정 코드
+        <input id="setupCode" type="text" autocomplete="one-time-code">
+      </label>
+      <label>관리자 비밀번호
+        <input id="adminPassword" type="password" minlength="10" autocomplete="current-password" required>
+      </label>
+      <label id="adminPasswordConfirmLabel" class="hidden">비밀번호 확인
+        <input id="adminPasswordConfirm" type="password" minlength="10" autocomplete="new-password">
+      </label>
+      <p id="adminLoginError" class="form-error hidden"></p>
+      <button id="adminLoginSubmit" class="button primary full" type="submit">로그인</button>
+    </form>
+  </dialog>
+
+  <dialog id="adminDialog" class="dialog admin-dialog">
+    <header class="admin-header">
+      <div><p class="eyebrow">관리자</p><h2>연수 전자서명 관리</h2></div>
+      <div class="header-actions">
+        <button id="adminLogout" class="button quiet" type="button">로그아웃</button>
+        <button id="closeAdmin" class="close-button" type="button" aria-label="닫기">×</button>
+      </div>
+    </header>
+    <nav id="adminTabs" class="admin-tabs" aria-label="관리 메뉴">
+      <button class="active" data-admin-tab="trainings" type="button">연수</button>
+      <button data-admin-tab="staff" type="button">구성원</button>
+      <button data-admin-tab="records" type="button">서명 기록</button>
+      <button data-admin-tab="exports" type="button">출력·삭제</button>
+      <button data-admin-tab="settings" type="button">기관 설정</button>
+      <button data-admin-tab="share" type="button">공유·보안</button>
+    </nav>
+    <div class="admin-body">
+      <section class="admin-section active" data-admin-panel="trainings">
+        <div class="section-heading"><div><h3>연수 관리</h3><p>서명 날짜와 가능 시간을 설정합니다.</p></div><button id="newTraining" class="button primary" type="button">새 연수</button></div>
+        <div id="trainingAdminList" class="admin-list"></div>
+        <form id="trainingForm" class="subcard hidden">
+          <input id="trainingId" type="hidden">
+          <div class="form-grid two-column">
+            <label>연수명<input id="trainingTitle" maxlength="100" required></label>
+            <label>대상·내용<input id="trainingTarget" maxlength="200" placeholder="예: 전 교직원"></label>
+            <label>날짜<input id="trainingDate" type="date" required></label>
+            <label class="inline-check"><input id="trainingDaily" type="checkbox"> 매일 표시</label>
+            <label>시작 시각<input id="trainingStart" type="time"></label>
+            <label>종료 시각<input id="trainingEnd" type="time"></label>
+            <label class="inline-check"><input id="trainingActive" type="checkbox" checked> 활성화</label>
+          </div>
+          <p id="trainingFormError" class="form-error hidden"></p>
+          <div class="button-row"><button class="button primary" type="submit">저장</button><button id="cancelTraining" class="button secondary" type="button">취소</button></div>
+        </form>
+      </section>
+
+      <section class="admin-section" data-admin-panel="staff">
+        <div class="section-heading"><div><h3>구성원 관리</h3><p>부서와 성명을 등록합니다.</p></div><button id="downloadRosterTemplate" class="button secondary" type="button">엑셀 양식</button></div>
+        <form id="staffAddForm" class="subcard">
+          <div class="form-grid two-column"><label>부서<input id="staffDepartment" maxlength="50" required></label><label>성명 또는 여러 명<input id="staffNames" maxlength="2000" placeholder="쉼표 또는 줄바꿈으로 구분" required></label></div>
+          <button class="button primary" type="submit">구성원 추가</button>
+        </form>
+        <div class="import-row">
+          <label class="file-button">엑셀·CSV 가져오기<input id="rosterFile" type="file" accept=".xlsx,.xls,.csv"></label>
+          <span id="rosterImportStatus"></span>
+        </div>
+        <form id="renameDepartmentForm" class="inline-form">
+          <select id="oldDepartment"></select><input id="newDepartment" maxlength="50" placeholder="새 부서명" required><button class="button secondary" type="submit">부서명 변경</button>
+        </form>
+        <div id="staffAdminList" class="admin-list"></div>
+      </section>
+
+      <section class="admin-section" data-admin-panel="records">
+        <div class="section-heading"><div><h3>서명 기록</h3><p>잘못 등록된 기록을 개별 삭제할 수 있습니다.</p></div></div>
+        <form id="recordFilterForm" class="filter-row"><select id="recordTraining"></select><input id="recordDate" type="date" required><button class="button primary" type="submit">조회</button></form>
+        <div id="recordSummary"></div><div id="recordList" class="admin-list"></div>
+      </section>
+
+      <section class="admin-section" data-admin-panel="exports">
+        <div class="section-heading"><div><h3>출력 및 원본 삭제</h3><p>PDF·엑셀 생성이 끝나야 원본을 삭제할 수 있습니다.</p></div></div>
+        <form id="exportForm" class="subcard">
+          <div class="form-grid three-column">
+            <label>연수<select id="exportTraining"></select></label>
+            <label>날짜<input id="exportDate" type="date" required></label>
+            <label>열 수<select id="exportColumns"><option value="1">1열</option><option value="2" selected>2열</option><option value="3">3열</option></select></label>
+            <label>정렬<select id="exportSort"><option value="department">부서순</option><option value="name">이름순</option></select></label>
+            <label class="inline-check"><input id="exportShowRate" type="checkbox" checked> 서명률 표시</label>
+          </div>
+          <button class="button primary" type="submit">PDF·엑셀 만들기</button>
+        </form>
+        <div id="exportProgress" class="progress-box hidden"><progress max="100" value="0"></progress><p></p></div>
+        <div id="exportJobList" class="admin-list"></div>
+      </section>
+
+      <section class="admin-section" data-admin-panel="settings">
+        <div class="section-heading"><div><h3>기관 설정</h3><p>개인정보 안내가 모두 입력되어야 연수를 활성화할 수 있습니다.</p></div></div>
+        <form id="settingsForm" class="subcard">
+          <div class="form-grid two-column">
+            <label>학교명<input id="settingsSchoolName" maxlength="80" required></label>
+            <label>부제목<input id="settingsSubtitle" maxlength="100" required></label>
+            <label class="span-two">상단 안내문<textarea id="settingsNotice" maxlength="1000"></textarea></label>
+            <label>대표 색상<input id="settingsBrandColor" type="color" value="#315c54"></label>
+            <label>개인정보 담당자·연락처<input id="settingsPrivacyContact" maxlength="200" required></label>
+            <label class="span-two">수집 목적<textarea id="settingsPrivacyPurpose" maxlength="500" required></textarea></label>
+            <label class="span-two">수집 항목<textarea id="settingsPrivacyItems" maxlength="500" required></textarea></label>
+            <label class="span-two">보관기간·삭제 방법<textarea id="settingsPrivacyRetention" maxlength="500" required></textarea></label>
+          </div>
+          <button class="button primary" type="submit">설정 저장</button>
+        </form>
+      </section>
+
+      <section class="admin-section" data-admin-panel="share">
+        <div class="section-heading"><div><h3>공유 및 보안</h3><p>링크 유출이 의심되면 공유 키를 교체하세요.</p></div></div>
+        <div class="subcard share-admin-card"><div id="adminQrCode" class="qr-box"></div><label>공유 링크<input id="adminShareUrl" readonly></label><button id="adminCopyShare" class="button primary" type="button">링크 복사</button><button id="rotateShareToken" class="button danger" type="button">공유 키 교체</button></div>
+        <form id="changePasswordForm" class="subcard"><h4>관리자 비밀번호 변경</h4><label>현재 비밀번호<input id="currentPassword" type="password" minlength="10" required></label><label>새 비밀번호<input id="newPassword" type="password" minlength="10" required></label><button class="button secondary" type="submit">비밀번호 변경</button></form>
+      </section>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast hidden" role="status"></div>
+</body>
+</html>

@@ -1,0 +1,140 @@
+export const SEOUL_TIME_ZONE = 'Asia/Seoul';
+
+export function parseShareToken(hash = '') {
+  const raw = String(hash).replace(/^#/, '');
+  if (!raw || raw === 'admin') return '';
+  const params = new URLSearchParams(raw);
+  const token = params.get('k') || '';
+  return /^[A-Za-z0-9_-]{20,64}$/.test(token) ? token : '';
+}
+
+export function formatKoreanDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return '';
+  const [year, month, day] = value.split('-').map(Number);
+  return `${year}년 ${month}월 ${day}일`;
+}
+
+export function todaySeoul(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: SEOUL_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(now);
+  const get = type => parts.find(part => part.type === type)?.value || '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+export function trainingTimeLabel(training) {
+  if (!training) return '';
+  const date = training.daily ? '매일' : formatKoreanDate(training.date);
+  const time = training.startTime || training.endTime
+    ? `${training.startTime || '00:00'} ~ ${training.endTime || '24:00'}`
+    : '시간 제한 없음';
+  return `${date} · ${time}`;
+}
+
+export function groupStaffByDepartment(staff = []) {
+  const groups = new Map();
+  staff
+    .filter(person => person && person.active !== false && person.id && person.name)
+    .forEach(person => {
+      const department = String(person.department || '미지정').trim() || '미지정';
+      if (!groups.has(department)) groups.set(department, []);
+      groups.get(department).push(person);
+    });
+  for (const people of groups.values()) {
+    people.sort((a, b) => String(a.name).localeCompare(String(b.name), 'ko'));
+  }
+  return groups;
+}
+
+export function normalizeRosterRows(rows = []) {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+  const normalized = [];
+  const seen = new Set();
+  const header = rows[0].map(value => String(value || '').trim().replace(/\s/g, ''));
+  const departmentIndex = header.findIndex(value => ['부서', '부서명', '소속'].includes(value));
+  const nameIndex = header.findIndex(value => ['성명', '이름', '교직원명'].includes(value));
+  const start = departmentIndex >= 0 && nameIndex >= 0 ? 1 : 0;
+  const deptColumn = departmentIndex >= 0 ? departmentIndex : 0;
+  const personColumn = nameIndex >= 0 ? nameIndex : 1;
+
+  rows.slice(start).forEach(row => {
+    const department = String(row?.[deptColumn] ?? '').trim();
+    const name = String(row?.[personColumn] ?? '').trim();
+    if (!department || !name || department.length > 50 || name.length > 50) return;
+    const key = `${department}\u0000${name}`.toLocaleLowerCase('ko');
+    if (seen.has(key)) return;
+    seen.add(key);
+    normalized.push({ department, name });
+  });
+  return normalized;
+}
+
+export function splitNames(value) {
+  return [...new Set(String(value || '')
+    .split(/[\n,;]/)
+    .map(name => name.trim())
+    .filter(Boolean))]
+    .slice(0, 200);
+}
+
+export function isPrivacyReady(settings = {}) {
+  return ['schoolName', 'subtitle', 'privacyPurpose', 'privacyItems', 'privacyRetention', 'privacyContact']
+    .every(key => String(settings[key] || '').trim().length > 0);
+}
+
+export function validateTraining(training = {}) {
+  const errors = [];
+  if (!String(training.title || '').trim()) errors.push('연수명을 입력해 주세요.');
+  if (!training.daily && !/^\d{4}-\d{2}-\d{2}$/.test(String(training.date || ''))) errors.push('연수 날짜를 입력해 주세요.');
+  if (training.startTime && training.endTime && training.startTime >= training.endTime) errors.push('종료 시각은 시작 시각보다 늦어야 합니다.');
+  return errors;
+}
+
+export function buildShareUrl(baseUrl, token) {
+  const base = String(baseUrl || '').split('#')[0].replace(/\?.*$/, '');
+  if (!base || !token) return '';
+  return `${base}#k=${encodeURIComponent(token)}`;
+}
+
+export function localDuplicateKey(trainingId, staffId, date) {
+  return `training-sign:${trainingId}:${staffId}:${date}`;
+}
+
+export function sortRecords(records = [], mode = 'department') {
+  return [...records].sort((a, b) => {
+    if (mode === 'name') return String(a.name).localeCompare(String(b.name), 'ko') || String(a.department).localeCompare(String(b.department), 'ko');
+    return String(a.department).localeCompare(String(b.department), 'ko') || String(a.name).localeCompare(String(b.name), 'ko');
+  });
+}
+
+export function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+export function safeFileName(value) {
+  return String(value || '')
+    .normalize('NFC')
+    .replace(/[\\/:*?"<>|\r\n]+/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80) || '연수';
+}
+
+export function bytesToBase64(bytes) {
+  let binary = '';
+  const chunk = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunk));
+  }
+  return btoa(binary);
+}
+
+export function base64ToUint8Array(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
