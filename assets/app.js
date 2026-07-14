@@ -3,6 +3,7 @@ import {
   formatKoreanDate,
   groupStaffByDepartment,
   isPrivacyReady,
+  isValidAdminPassword,
   localDuplicateKey,
   normalizeRosterRows,
   parseShareToken,
@@ -419,6 +420,7 @@ async function handleAdminLogin(event) {
   try {
     let data;
     if (setupRequired) {
+      if (!isValidAdminPassword(password)) throw new Error('비밀번호는 숫자 4자리 또는 문자와 숫자를 포함한 10자 이상으로 설정해 주세요.');
       if (password !== $('adminPasswordConfirm').value) throw new Error('비밀번호 확인이 일치하지 않습니다.');
       data = await rpc('complete_setup', {
         setupCode: $('setupCode').value.trim(),
@@ -698,6 +700,7 @@ async function rotateShareToken() {
 async function changePassword(event) {
   event.preventDefault();
   try {
+    if (!isValidAdminPassword($('newPassword').value)) throw new Error('새 비밀번호는 숫자 4자리 또는 문자와 숫자를 포함한 10자 이상으로 설정해 주세요.');
     await rpc('change_password', { currentPassword: $('currentPassword').value, newPassword: $('newPassword').value });
     $('currentPassword').value = '';
     $('newPassword').value = '';

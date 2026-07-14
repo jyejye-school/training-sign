@@ -85,6 +85,15 @@ export function isPrivacyReady(settings = {}) {
     .every(key => String(settings[key] || '').trim().length > 0);
 }
 
+export function isValidAdminPassword(password) {
+  const value = String(password || '');
+  if (/^\d{4}$/.test(value)) return true;
+  return value.length >= 10
+    && value.length <= 100
+    && /[A-Za-z가-힣]/.test(value)
+    && /\d/.test(value);
+}
+
 export function validateTraining(training = {}) {
   const errors = [];
   if (!String(training.title || '').trim()) errors.push('연수명을 입력해 주세요.');

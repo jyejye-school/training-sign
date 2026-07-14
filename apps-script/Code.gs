@@ -335,8 +335,10 @@ function verifyPassword_(password) {
 
 function validatePassword_(password) {
   const value = String(password || '');
-  if (value.length < 10 || value.length > 100) apiError_('WEAK_PASSWORD', '관리자 비밀번호는 10자 이상 100자 이하로 설정해 주세요.');
-  if (!/[A-Za-z가-힣]/.test(value) || !/\d/.test(value)) apiError_('WEAK_PASSWORD', '관리자 비밀번호에는 문자와 숫자를 함께 넣어 주세요.');
+  if (/^\d{4}$/.test(value)) return value;
+  if (value.length < 10 || value.length > 100 || !/[A-Za-z가-힣]/.test(value) || !/\d/.test(value)) {
+    apiError_('WEAK_PASSWORD', '관리자 비밀번호는 숫자 4자리 또는 문자와 숫자를 포함한 10자 이상 100자 이하로 설정해 주세요.');
+  }
   return value;
 }
 
@@ -895,7 +897,7 @@ function ensureGuideSheet_(spreadsheet, rebuild) {
     ['2', '초기 설정 실행', '학교용 사본에서 🖊️ 전자서명 관리 → 초기 설정 실행을 선택하고 권한을 승인합니다.'],
     ['3', '웹앱 배포', '확장 프로그램 → Apps Script → 배포 → 새 배포 → 웹 앱에서 ‘나로 실행 / 모든 사용자’를 선택합니다.'],
     ['4', '화면 연결', '웹앱의 /exec 주소를 GitHub Pages의 assets/config.js에 입력합니다.'],
-    ['5', '관리자 첫 설정', '초기 설정 코드로 비밀번호를 만들고 학교 정보·개인정보 안내·명단·연수를 등록합니다.']
+    ['5', '관리자 첫 설정', '초기 설정 코드로 숫자 4자리 또는 문자·숫자 포함 10자 이상의 비밀번호를 만들고 학교 정보·개인정보 안내·명단·연수를 등록합니다.']
   ];
   installRows.forEach(function(row, index) {
     const targetRow = 7 + index * 2;

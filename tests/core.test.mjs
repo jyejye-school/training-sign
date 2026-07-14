@@ -4,6 +4,7 @@ import {
   buildShareUrl,
   groupStaffByDepartment,
   isPrivacyReady,
+  isValidAdminPassword,
   localDuplicateKey,
   normalizeRosterRows,
   parseShareToken,
@@ -51,6 +52,15 @@ test('개인정보 안내 필수값을 검사한다', () => {
   const valid = { schoolName: '학교', subtitle: '연수', privacyPurpose: '목적', privacyItems: '항목', privacyRetention: '삭제', privacyContact: '담당자' };
   assert.equal(isPrivacyReady(valid), true);
   assert.equal(isPrivacyReady({ ...valid, privacyContact: '' }), false);
+});
+
+test('관리자 비밀번호는 숫자 4자리 또는 문자·숫자 포함 10자 이상을 허용한다', () => {
+  assert.equal(isValidAdminPassword('1234'), true);
+  assert.equal(isValidAdminPassword('0000'), true);
+  assert.equal(isValidAdminPassword('학교연수2026비밀번호'), true);
+  assert.equal(isValidAdminPassword('12345'), false);
+  assert.equal(isValidAdminPassword('abcdefghij'), false);
+  assert.equal(isValidAdminPassword('abcd'), false);
 });
 
 test('연수 날짜와 시각을 검증한다', () => {

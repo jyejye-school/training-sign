@@ -148,10 +148,10 @@
         <input id="setupCode" type="text" autocomplete="one-time-code">
       </label>
       <label>관리자 비밀번호
-        <input id="adminPassword" type="password" minlength="10" autocomplete="current-password" required>
+        <input id="adminPassword" type="password" minlength="4" maxlength="100" autocomplete="current-password" title="숫자 4자리 또는 문자와 숫자를 포함한 10자 이상" required>
       </label>
       <label id="adminPasswordConfirmLabel" class="hidden">비밀번호 확인
-        <input id="adminPasswordConfirm" type="password" minlength="10" autocomplete="new-password">
+        <input id="adminPasswordConfirm" type="password" minlength="4" maxlength="100" autocomplete="new-password" title="숫자 4자리 또는 문자와 숫자를 포함한 10자 이상">
       </label>
       <p id="adminLoginError" class="form-error hidden"></p>
       <button id="adminLoginSubmit" class="button primary full" type="submit">로그인</button>
@@ -252,7 +252,7 @@
       <section class="admin-section" data-admin-panel="share">
         <div class="section-heading"><div><h3>공유 및 보안</h3><p>링크 유출이 의심되면 공유 키를 교체하세요.</p></div></div>
         <div class="subcard share-admin-card"><div id="adminQrCode" class="qr-box"></div><label>공유 링크<input id="adminShareUrl" readonly></label><button id="adminCopyShare" class="button primary" type="button">링크 복사</button><button id="rotateShareToken" class="button danger" type="button">공유 키 교체</button></div>
-        <form id="changePasswordForm" class="subcard"><h4>관리자 비밀번호 변경</h4><label>현재 비밀번호<input id="currentPassword" type="password" minlength="10" required></label><label>새 비밀번호<input id="newPassword" type="password" minlength="10" required></label><button class="button secondary" type="submit">비밀번호 변경</button></form>
+        <form id="changePasswordForm" class="subcard"><h4>관리자 비밀번호 변경</h4><p>숫자 4자리 또는 문자와 숫자를 포함한 10자 이상을 사용할 수 있습니다.</p><label>현재 비밀번호<input id="currentPassword" type="password" minlength="4" maxlength="100" required></label><label>새 비밀번호<input id="newPassword" type="password" minlength="4" maxlength="100" title="숫자 4자리 또는 문자와 숫자를 포함한 10자 이상" required></label><button class="button secondary" type="submit">비밀번호 변경</button></form>
       </section>
     </div>
   </dialog>
