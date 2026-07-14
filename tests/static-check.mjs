@@ -21,6 +21,8 @@ expect(/get_public_data/.test(backend) && /submit_signature/.test(backend), '공
 expect(/requireAdminSession_/.test(backend), '관리자 세션 검증이 누락되었습니다.');
 expect(/\^\\d\{4\}\$/.test(backend), '숫자 4자리 관리자 비밀번호 검증이 누락되었습니다.');
 expect(!/privacyContact|settingsPrivacyContact/.test(index + app + backend), '개인정보 담당자·연락처 항목이 남아 있습니다.');
+expect(!/trainingTarget/.test(index + app), '연수 대상·내용 입력 항목이 남아 있습니다.');
+expect(!/training\.target/.test(app), '연수 카드가 대상·내용 값을 사용하고 있습니다.');
 expect(/LockService/.test(backend), '동시 제출 잠금이 누락되었습니다.');
 expect(/setTrashed\(true\)/.test(backend), '원본 파일 삭제 처리가 누락되었습니다.');
 expect(/function onOpen\(\)/.test(backend) && /🖊️ 전자서명 관리/.test(backend), '연결형 시트 관리 메뉴가 누락되었습니다.');
@@ -30,6 +32,9 @@ expect(!/SpreadsheetApp\.create\(APP\.DATA_FILE\)/.test(backend), '초기화가 
 expect(/SpreadsheetApp\.openById\(PropertiesService\.getScriptProperties\(\)\.getProperty\('SPREADSHEET_ID'\)\)/.test(backend), '웹앱 데이터 접근이 저장된 시트 ID를 사용하지 않습니다.');
 expect(/hideDataSheets_/.test(backend) && /사용설명서/.test(backend), '사용설명서 표시·데이터 탭 숨김 처리가 누락되었습니다.');
 expect(/setProperties\(secrets, false\)/.test(backend), '재초기화가 기존 Script Properties를 보존하지 않습니다.');
+expect(/outputType/.test(index + app + backend) && /previewFileId/.test(backend), '선택 출력 형식 또는 비공개 미리보기 작업 정보가 누락되었습니다.');
+expect(/recordPrintOpened_/.test(backend) && /canPurgeExport_/.test(backend), '인쇄 기록 또는 출력별 원본 삭제 차단이 누락되었습니다.');
+expect(/frame-src 'self' blob:/.test(index), '비공개 Blob PDF 미리보기 CSP가 누락되었습니다.');
 expect(fs.existsSync(path.join(root, 'vendor/qrcode.js')), 'QR 라이브러리가 없습니다.');
 expect(fs.existsSync(path.join(root, 'vendor/xlsx.full.min.js')), '엑셀 라이브러리가 없습니다.');
 expect(read('vendor/xlsx.full.min.js').includes('0.20.3'), 'SheetJS가 고정 버전 0.20.3이 아닙니다.');

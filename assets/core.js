@@ -36,16 +36,14 @@ export function trainingTimeLabel(training) {
 
 export function groupStaffByDepartment(staff = []) {
   const groups = new Map();
-  staff
+  [...staff]
     .filter(person => person && person.active !== false && person.id && person.name)
+    .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
     .forEach(person => {
       const department = String(person.department || '미지정').trim() || '미지정';
       if (!groups.has(department)) groups.set(department, []);
       groups.get(department).push(person);
     });
-  for (const people of groups.values()) {
-    people.sort((a, b) => String(a.name).localeCompare(String(b.name), 'ko'));
-  }
   return groups;
 }
 
@@ -112,10 +110,11 @@ export function localDuplicateKey(trainingId, staffId, date) {
   return `training-sign:${trainingId}:${staffId}:${date}`;
 }
 
-export function sortRecords(records = [], mode = 'department') {
+export function sortRecords(records = [], mode = 'registration') {
   return [...records].sort((a, b) => {
     if (mode === 'name') return String(a.name).localeCompare(String(b.name), 'ko') || String(a.department).localeCompare(String(b.department), 'ko');
-    return String(a.department).localeCompare(String(b.department), 'ko') || String(a.name).localeCompare(String(b.name), 'ko');
+    if (mode === 'department') return String(a.department).localeCompare(String(b.department), 'ko') || String(a.name).localeCompare(String(b.name), 'ko');
+    return Number(a.sortOrder || 0) - Number(b.sortOrder || 0);
   });
 }
 

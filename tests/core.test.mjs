@@ -9,6 +9,7 @@ import {
   normalizeRosterRows,
   parseShareToken,
   safeFileName,
+  sortRecords,
   splitNames,
   validateTraining
 } from '../assets/core.js';
@@ -38,14 +39,25 @@ test('엑셀 명단을 정규화하고 중복과 빈 행을 제거한다', () =>
   ]);
 });
 
-test('명단은 부서별로 묶고 이름순으로 정렬한다', () => {
+test('명단은 부서별로 묶고 등록 순서를 유지한다', () => {
   const groups = groupStaffByDepartment([
-    { id: '2', department: '교무부', name: '최교사', active: true },
-    { id: '1', department: '교무부', name: '김교사', active: true },
-    { id: '3', department: '연구부', name: '박교사', active: false }
+    { id: '2', department: '교무부', name: '최교사', active: true, sortOrder: 2 },
+    { id: '1', department: '교무부', name: '김교사', active: true, sortOrder: 1 },
+    { id: '3', department: '연구부', name: '박교사', active: false, sortOrder: 3 }
   ]);
   assert.deepEqual([...groups.keys()], ['교무부']);
   assert.deepEqual(groups.get('교무부').map(person => person.name), ['김교사', '최교사']);
+});
+
+test('출력 정렬은 등록순을 기본으로 하고 부서순과 이름순을 지원한다', () => {
+  const records = [
+    { department: '연구부', name: '김교사', sortOrder: 3 },
+    { department: '교무부', name: '최교사', sortOrder: 1 },
+    { department: '교무부', name: '박교사', sortOrder: 2 }
+  ];
+  assert.deepEqual(sortRecords(records).map(person => person.name), ['최교사', '박교사', '김교사']);
+  assert.deepEqual(sortRecords(records, 'department').map(person => person.name), ['박교사', '최교사', '김교사']);
+  assert.deepEqual(sortRecords(records, 'name').map(person => person.name), ['김교사', '박교사', '최교사']);
 });
 
 test('개인정보 안내 필수값을 검사한다', () => {

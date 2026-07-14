@@ -19,6 +19,7 @@ const DEMO = new URLSearchParams(location.search).get('demo') === '1';
 const API_URL = String(config.API_URL || '');
 const shareToken = DEMO ? 'DEMO_TOKEN_1234567890123456' : parseShareToken(location.hash);
 const baseUrl = `${location.origin}${location.pathname}`;
+const EXPORT_SETTINGS_KEY = 'training-sign:export-settings';
 
 const state = {
   publicData: null,
@@ -30,7 +31,8 @@ const state = {
   strokes: [],
   drawing: false,
   currentStroke: null,
-  demoAdminData: null
+  demoAdminData: null,
+  activePreview: null
 };
 
 const demoData = {
@@ -41,18 +43,18 @@ const demoData = {
     brandColor: '#315c54',
     privacyPurpose: '교직원 연수 참여 여부 확인 및 서명등록부 작성',
     privacyItems: '부서, 성명, 서명 이미지, 서명 날짜와 시각',
-    privacyRetention: 'PDF와 엑셀 보관 완료 후 시스템 원본을 삭제합니다.'
+    privacyRetention: '선택한 출력 파일을 보관한 뒤 시스템 원본을 삭제합니다.'
   },
   trainings: [
-    { id: 'demo-training-1', title: '2026 개인정보 보호 연수', target: '전 교직원', date: todaySeoul(), daily: false, startTime: '', endTime: '', active: true, sortOrder: 1 },
-    { id: 'demo-training-2', title: '학교 안전교육', target: '전 교직원', date: todaySeoul(), daily: false, startTime: '09:00', endTime: '18:00', active: true, sortOrder: 2 }
+    { id: 'demo-training-1', title: '2026 개인정보 보호 연수', date: todaySeoul(), daily: false, startTime: '', endTime: '', active: true, sortOrder: 1 },
+    { id: 'demo-training-2', title: '학교 안전교육', date: todaySeoul(), daily: false, startTime: '09:00', endTime: '18:00', active: true, sortOrder: 2 }
   ],
   staff: [
-    { id: 'staff-1', department: '교무기획부', name: '김하늘', active: true },
-    { id: 'staff-2', department: '교무기획부', name: '박서준', active: true },
-    { id: 'staff-3', department: '교육연구부', name: '이도윤', active: true },
-    { id: 'staff-4', department: '교육연구부', name: '최지우', active: true },
-    { id: 'staff-5', department: '행정실', name: '정민서', active: true }
+    { id: 'staff-1', department: '교무기획부', name: '김하늘', active: true, sortOrder: 1 },
+    { id: 'staff-2', department: '교무기획부', name: '박서준', active: true, sortOrder: 2 },
+    { id: 'staff-3', department: '교육연구부', name: '이도윤', active: true, sortOrder: 3 },
+    { id: 'staff-4', department: '교육연구부', name: '최지우', active: true, sortOrder: 4 },
+    { id: 'staff-5', department: '행정실', name: '정민서', active: true, sortOrder: 5 }
   ],
   privacyReady: true,
   serverDate: todaySeoul()
@@ -188,6 +190,25 @@ function demoRpc(action, payload) {
     { id: 'record-1', department: '교무기획부', name: '김하늘', signDate: todaySeoul(), signTime: '10:12:03', trainingId: 'demo-training-1' },
     { id: 'record-2', department: '교육연구부', name: '이도윤', signDate: todaySeoul(), signTime: '10:20:14', trainingId: 'demo-training-1' }
   ] });
+  if (action === 'start_export') {
+    const demoTraining = state.demoAdminData.trainings.find(item => item.id === payload.trainingId);
+    const job = {
+      jobId: `demo-export-${Date.now()}`, trainingId: payload.trainingId, trainingTitle: demoTraining?.title || '데모 연수', date: payload.date,
+      sort: payload.sort, columns: payload.columns, showRate: payload.showRate, outputType: payload.outputType,
+      status: 'queued', progress: 0, total: 2, hasPreview: false, hasPdf: false, hasXlsx: false, canPurge: false
+    };
+    state.demoAdminData.exports.unshift(job);
+    return Promise.resolve(job);
+  }
+  if (action === 'continue_export') {
+    const job = state.demoAdminData.exports.find(item => item.jobId === payload.jobId);
+    if (!job) return Promise.reject(new Error('데모 출력 작업을 찾을 수 없습니다.'));
+    Object.assign(job, { status: 'preview_ready', progress: 2, hasPreview: true });
+    return Promise.resolve(job);
+  }
+  if (action === 'finalize_export' || action === 'record_print_opened') {
+    return Promise.reject(Object.assign(new Error('데모에서는 파일 생성과 인쇄 기록을 저장하지 않습니다.'), { code: 'DEMO_READ_ONLY' }));
+  }
   if (['logout', 'download_export_chunk'].includes(action)) return Promise.resolve({});
   return Promise.reject(Object.assign(new Error('데모에서는 변경 내용을 저장하지 않습니다.'), { code: 'DEMO_READ_ONLY' }));
 }
@@ -223,7 +244,7 @@ function renderTrainings() {
     button.type = 'button';
     button.className = 'choice-card';
     button.dataset.trainingId = training.id;
-    button.innerHTML = `<span><strong>${escapeHtml(training.title)}</strong><span class="choice-meta"><span class="pill">${escapeHtml(training.target || '대상 안내 없음')}</span><small>${escapeHtml(trainingTimeLabel(training))}</small></span></span><b aria-hidden="true">›</b>`;
+    button.innerHTML = `<span><strong>${escapeHtml(training.title)}</strong><span class="choice-meta"><small>${escapeHtml(trainingTimeLabel(training))}</small></span></span><b aria-hidden="true">›</b>`;
     button.addEventListener('click', () => selectTraining(training.id));
     list.append(button);
   });
@@ -504,7 +525,7 @@ function switchAdminTab(tab) {
 }
 
 function trainingMeta(training) {
-  return [training.target || '대상 미지정', trainingTimeLabel(training), training.active ? '활성' : '비활성'].join(' · ');
+  return [trainingTimeLabel(training), training.active ? '활성' : '비활성'].join(' · ');
 }
 
 function renderTrainingAdmin() {
@@ -525,7 +546,6 @@ function renderTrainingAdmin() {
 function openTrainingForm(training = null) {
   $('trainingId').value = training?.id || '';
   $('trainingTitle').value = training?.title || '';
-  $('trainingTarget').value = training?.target || '';
   $('trainingDate').value = training?.date && training.date !== '매일' ? training.date : todaySeoul();
   $('trainingDaily').checked = Boolean(training?.daily);
   $('trainingStart').value = training?.startTime || '';
@@ -541,7 +561,6 @@ async function saveTraining(event) {
   const training = {
     id: $('trainingId').value || undefined,
     title: $('trainingTitle').value.trim(),
-    target: $('trainingTarget').value.trim(),
     date: $('trainingDate').value,
     daily: $('trainingDaily').checked,
     startTime: $('trainingStart').value,
@@ -800,9 +819,23 @@ async function changePassword(event) {
 
 function exportStatusLabel(job) {
   if (job.status === 'complete') return '완료';
+  if (job.status === 'preview_ready') return job.printOpenedAt ? '인쇄창 열림' : '미리보기 준비됨';
   if (job.status === 'failed') return `실패: ${job.error || '알 수 없는 오류'}`;
   if (job.status === 'expired') return '만료됨';
   return `생성 중 ${job.progress || 0}/${job.total || 0}`;
+}
+
+function exportOutputLabel(outputType) {
+  if (outputType === 'xlsx') return '엑셀';
+  if (outputType === 'print') return '인쇄';
+  if (outputType === 'legacy_both') return '기존 PDF·엑셀';
+  return 'PDF';
+}
+
+function exportPrimaryActionLabel(outputType) {
+  if (outputType === 'xlsx') return '엑셀 만들기';
+  if (outputType === 'print') return '인쇄하기';
+  return 'PDF 내려받기';
 }
 
 function renderExportJobs() {
@@ -810,9 +843,12 @@ function renderExportJobs() {
   $('exportJobList').innerHTML = jobs.length ? jobs.map(job => {
     const training = state.adminData.trainings.find(item => item.id === job.trainingId);
     return `<div class="admin-row" data-job-id="${escapeHtml(job.jobId)}">
-      <div class="admin-row-main"><strong>${escapeHtml(training?.title || job.trainingTitle || '삭제된 연수')}</strong><small>${escapeHtml(job.date)} · ${escapeHtml(exportStatusLabel(job))}</small></div>
+      <div class="admin-row-main"><strong>${escapeHtml(training?.title || job.trainingTitle || '삭제된 연수')}</strong><small>${escapeHtml(job.date)} · ${escapeHtml(exportOutputLabel(job.outputType))} · ${escapeHtml(exportStatusLabel(job))}</small></div>
       <div class="row-actions">
-        ${job.status === 'complete' ? '<button data-action="download-pdf">PDF</button><button data-action="download-xlsx">엑셀</button><button class="danger" data-action="purge-originals">원본 삭제</button>' : ''}
+        ${job.hasPreview && job.status === 'preview_ready' ? '<button data-action="open-preview">미리보기</button>' : ''}
+        ${job.hasPdf ? '<button data-action="download-pdf">PDF</button>' : ''}
+        ${job.hasXlsx ? '<button data-action="download-xlsx">엑셀</button>' : ''}
+        ${job.canPurge && !job.purgedAt ? '<button class="danger" data-action="purge-originals">원본 삭제</button>' : ''}
         ${job.status === 'processing' || job.status === 'queued' ? '<button data-action="resume-export">계속 만들기</button>' : ''}
       </div>
     </div>`;
@@ -826,10 +862,15 @@ async function startExport(event) {
     date: $('exportDate').value,
     columns: Number($('exportColumns').value),
     sort: $('exportSort').value,
-    showRate: $('exportShowRate').checked
+    showRate: $('exportShowRate').checked,
+    outputType: $('exportOutputType').value
   };
   if (!payload.trainingId || !payload.date) return showToast('연수와 날짜를 선택해 주세요.');
   try {
+    localStorage.setItem(EXPORT_SETTINGS_KEY, JSON.stringify({
+      trainingId: payload.trainingId, date: payload.date, columns: String(payload.columns),
+      sort: payload.sort, showRate: payload.showRate, outputType: payload.outputType
+    }));
     const job = await rpc('start_export', payload);
     setHidden($('exportProgress'), false);
     await runExportJob(job.jobId);
@@ -843,12 +884,14 @@ async function runExportJob(jobId) {
   try {
     do {
       job = await rpc('continue_export', { jobId });
-      const percent = job.total ? Math.round(job.progress / job.total * 100) : job.status === 'complete' ? 100 : 0;
+      const percent = job.total ? Math.round(job.progress / job.total * 100) : job.status === 'preview_ready' ? 100 : 0;
       box.querySelector('progress').value = percent;
-      box.querySelector('p').textContent = job.status === 'complete' ? 'PDF와 엑셀을 만들었습니다.' : `서명 이미지를 배치 처리하는 중입니다. ${job.progress}/${job.total}`;
+      box.querySelector('p').textContent = job.status === 'preview_ready'
+        ? '실제 서명이 포함된 A4 미리보기를 만들었습니다.'
+        : `서명 이미지를 배치하는 중입니다. ${job.progress}/${job.total}`;
     } while (job.status === 'processing' || job.status === 'queued');
     await refreshAdminData();
-    if (job.status === 'complete') showToast('PDF와 엑셀 생성이 완료되었습니다.');
+    if (job.status === 'preview_ready') await openExportPreview(job);
     else if (job.status === 'failed') throw new Error(job.error || '출력 파일 생성에 실패했습니다.');
   } catch (error) {
     box.querySelector('p').textContent = error.message;
@@ -856,13 +899,12 @@ async function runExportJob(jobId) {
   }
 }
 
-async function downloadExport(jobId, format) {
+async function downloadExportBlob(jobId, format) {
   let offset = 0;
   let total = null;
   let fileName = `연수_서명등록부.${format}`;
   let mimeType = format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   const chunks = [];
-  showToast('파일을 내려받는 중입니다…', 5000);
   do {
     const chunk = await rpc('download_export_chunk', { jobId, format, offset, chunkSize: 524288 });
     chunks.push(Uint8Array.from(atob(chunk.base64), character => character.charCodeAt(0)));
@@ -871,7 +913,10 @@ async function downloadExport(jobId, format) {
     fileName = chunk.fileName || fileName;
     mimeType = chunk.mimeType || mimeType;
   } while (offset < total);
-  const blob = new Blob(chunks, { type: mimeType });
+  return { blob: new Blob(chunks, { type: mimeType }), fileName, mimeType };
+}
+
+function saveBlob(blob, fileName) {
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
   link.download = fileName;
@@ -879,6 +924,98 @@ async function downloadExport(jobId, format) {
   link.click();
   link.remove();
   setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+
+async function downloadExport(jobId, format) {
+  showToast('파일을 내려받는 중입니다…', 5000);
+  const file = await downloadExportBlob(jobId, format);
+  saveBlob(file.blob, file.fileName);
+}
+
+function releaseExportPreview() {
+  const preview = state.activePreview;
+  if (preview?.blobUrl) URL.revokeObjectURL(preview.blobUrl);
+  state.activePreview = null;
+  const frame = $('exportPreviewFrame');
+  frame.removeAttribute('srcdoc');
+  frame.src = 'about:blank';
+  setHidden($('exportPreviewLoading'), false);
+}
+
+function closeExportPreview() {
+  releaseExportPreview();
+  if ($('exportPreviewDialog').open) $('exportPreviewDialog').close();
+}
+
+function demoPreviewHtml(job) {
+  const names = demoData.staff.map((person, index) => `<tr><td>${index + 1}</td><td>${escapeHtml(person.department)}</td><td>${escapeHtml(person.name)}</td><td>${index < 2 ? '데모 서명' : '미서명'}</td></tr>`).join('');
+  return `<!doctype html><html lang="ko"><meta charset="utf-8"><body><h1>데모 연수 서명등록부</h1><p>${escapeHtml(formatKoreanDate(job.date))} · 데모 미리보기</p><table border="1" cellspacing="0" cellpadding="10"><thead><tr><th>번호</th><th>부서</th><th>성명</th><th>서명</th></tr></thead><tbody>${names}</tbody></table><p>실제 운영에서는 등록된 PNG 서명 이미지가 이 칸에 표시됩니다.</p></body></html>`;
+}
+
+async function openExportPreview(job) {
+  releaseExportPreview();
+  const dialog = $('exportPreviewDialog');
+  const action = $('confirmExportPreview');
+  $('exportPreviewMeta').textContent = `${job.trainingTitle || '연수'} · ${job.date} · ${exportOutputLabel(job.outputType)}`;
+  action.textContent = exportPrimaryActionLabel(job.outputType);
+  action.disabled = false;
+  setHidden($('exportPreviewLoading'), false);
+  if (!dialog.open) dialog.showModal();
+  if (DEMO) {
+    $('exportPreviewFrame').srcdoc = demoPreviewHtml(job);
+    setHidden($('exportPreviewLoading'), true);
+    state.activePreview = { job, blobUrl: '', blob: null, fileName: '데모_서명등록부.pdf' };
+    return;
+  }
+  try {
+    const file = await downloadExportBlob(job.jobId, 'preview');
+    const blobUrl = URL.createObjectURL(file.blob);
+    state.activePreview = { job, blobUrl, blob: file.blob, fileName: file.fileName };
+    const frame = $('exportPreviewFrame');
+    frame.addEventListener('load', () => setHidden($('exportPreviewLoading'), true), { once: true });
+    frame.src = blobUrl;
+    setTimeout(() => {
+      if (state.activePreview?.blobUrl === blobUrl) setHidden($('exportPreviewLoading'), true);
+    }, 1800);
+  } catch (error) {
+    closeExportPreview();
+    throw error;
+  }
+}
+
+async function confirmExportPreview() {
+  const preview = state.activePreview;
+  if (!preview) return;
+  const { job } = preview;
+  if (DEMO) return showToast('데모에서는 파일 생성과 인쇄를 실행하지 않습니다.', 4200);
+  const button = $('confirmExportPreview');
+  try {
+    if (job.outputType === 'print') {
+      let openedFallback = false;
+      try {
+        const frameWindow = $('exportPreviewFrame').contentWindow;
+        frameWindow.focus();
+        frameWindow.print();
+      } catch {
+        openedFallback = Boolean(window.open(preview.blobUrl, '_blank', 'noopener'));
+      }
+      rpc('record_print_opened', { jobId: job.jobId }).then(refreshAdminData).catch(() => {});
+      showToast(openedFallback ? '새 탭에서 오른쪽 위 인쇄 버튼을 눌러 주세요.' : '인쇄창을 열었습니다.', 5200);
+      return;
+    }
+    button.disabled = true;
+    button.textContent = job.outputType === 'xlsx' ? '엑셀 만드는 중…' : 'PDF 준비 중…';
+    const completed = await rpc('finalize_export', { jobId: job.jobId });
+    await refreshAdminData();
+    await downloadExport(completed.jobId, job.outputType);
+    closeExportPreview();
+    showToast(job.outputType === 'xlsx' ? '엑셀 파일을 만들었습니다.' : 'PDF 파일을 만들었습니다.');
+  } catch (error) {
+    showToast(error.message, 5200);
+  } finally {
+    button.disabled = false;
+    button.textContent = exportPrimaryActionLabel(job.outputType);
+  }
 }
 
 function requestPurgeConfirmation(expected) {
@@ -889,7 +1026,7 @@ function requestPurgeConfirmation(expected) {
       <div class="purge-confirm-card" role="dialog" aria-modal="true" aria-labelledby="purgeConfirmTitle">
         <form>
           <h3 id="purgeConfirmTitle">서명 원본을 삭제할까요?</h3>
-          <p>PDF와 엑셀 파일을 내려받아 보관했는지 확인해 주세요. 삭제한 서명 기록과 이미지는 되돌릴 수 없습니다.</p>
+          <p>선택한 출력 파일을 내려받아 보관했는지 확인해 주세요. 삭제한 서명 기록과 이미지는 되돌릴 수 없습니다.</p>
           <label>계속하려면 연수명을 그대로 입력하세요.
             <strong>${escapeHtml(expected)}</strong>
             <input name="confirmation" autocomplete="off" maxlength="100" required>
@@ -943,8 +1080,22 @@ async function handleExportJobClick(event) {
     if (button.dataset.action === 'download-pdf') await downloadExport(job.jobId, 'pdf');
     if (button.dataset.action === 'download-xlsx') await downloadExport(job.jobId, 'xlsx');
     if (button.dataset.action === 'resume-export') await runExportJob(job.jobId);
+    if (button.dataset.action === 'open-preview') await openExportPreview(job);
     if (button.dataset.action === 'purge-originals') await purgeOriginals(job);
   } catch (error) { showToast(error.message, 5200); }
+}
+
+function restoreExportSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(EXPORT_SETTINGS_KEY) || 'null');
+    if (!saved) return;
+    if ([...$('exportTraining').options].some(option => option.value === saved.trainingId)) $('exportTraining').value = saved.trainingId;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(saved.date || ''))) $('exportDate').value = saved.date;
+    if (['1', '2', '3'].includes(String(saved.columns))) $('exportColumns').value = String(saved.columns);
+    if (['registration', 'department', 'name'].includes(saved.sort)) $('exportSort').value = saved.sort;
+    if (['pdf', 'xlsx', 'print'].includes(saved.outputType)) $('exportOutputType').value = saved.outputType;
+    $('exportShowRate').checked = saved.showRate !== false;
+  } catch { /* 손상된 브라우저 설정은 기본값을 사용합니다. */ }
 }
 
 function renderAdmin() {
@@ -952,6 +1103,7 @@ function renderAdmin() {
   renderStaffAdmin();
   fillSettingsForm();
   populateTrainingSelects();
+  restoreExportSettings();
   renderShareAdmin();
   renderExportJobs();
 }
@@ -962,6 +1114,7 @@ async function refreshAdminData() {
 }
 
 async function logoutAdmin() {
+  closeExportPreview();
   try { await rpc('logout'); } catch { /* Session may already be gone. */ }
   state.adminSession = '';
   state.adminData = null;
@@ -1028,6 +1181,9 @@ function bindEvents() {
   $('changePasswordForm').addEventListener('submit', changePassword);
   $('exportForm').addEventListener('submit', startExport);
   $('exportJobList').addEventListener('click', handleExportJobClick);
+  $('closeExportPreview').addEventListener('click', closeExportPreview);
+  $('confirmExportPreview').addEventListener('click', confirmExportPreview);
+  $('exportPreviewDialog').addEventListener('cancel', event => { event.preventDefault(); closeExportPreview(); });
 }
 
 bindEvents();

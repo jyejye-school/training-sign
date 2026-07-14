@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#315c54">
   <meta name="referrer" content="no-referrer">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://script.google.com https://script.googleusercontent.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://script.google.com https://script.googleusercontent.com; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'">
   <title>학교 연수 전자서명</title>
-  <link rel="stylesheet" href="assets/styles.css?v=20260714.3">
+  <link rel="stylesheet" href="assets/styles.css?v=20260714.4">
   <script src="assets/config.js"></script>
   <script src="vendor/qrcode.js" defer></script>
   <script src="vendor/xlsx.full.min.js" defer></script>
-  <script type="module" src="assets/app.js?v=20260714.3"></script>
+  <script type="module" src="assets/app.js?v=20260714.4"></script>
 </head>
 <body>
   <a class="skip-link" href="#mainContent">본문으로 바로가기</a>
@@ -182,7 +182,6 @@
           <input id="trainingId" type="hidden">
           <div class="form-grid two-column">
             <label>연수명<input id="trainingTitle" maxlength="100" required></label>
-            <label>대상·내용<input id="trainingTarget" maxlength="200" placeholder="예: 전 교직원"></label>
             <label>날짜<input id="trainingDate" type="date" required></label>
             <label class="inline-check"><input id="trainingDaily" type="checkbox"> 매일 표시</label>
             <label>시작 시각<input id="trainingStart" type="time"></label>
@@ -217,16 +216,18 @@
       </section>
 
       <section class="admin-section" data-admin-panel="exports">
-        <div class="section-heading"><div><h3>출력 및 원본 삭제</h3><p>PDF·엑셀 생성이 끝나야 원본을 삭제할 수 있습니다.</p></div></div>
+        <div class="section-heading"><div><h3>출력 및 원본 삭제</h3><p>실제 서명이 포함된 A4 미리보기를 확인한 뒤 PDF, 엑셀 또는 인쇄를 진행합니다.</p></div></div>
         <form id="exportForm" class="subcard">
           <div class="form-grid three-column">
             <label>연수<select id="exportTraining"></select></label>
             <label>날짜<input id="exportDate" type="date" required></label>
             <label>열 수<select id="exportColumns"><option value="1">1열</option><option value="2" selected>2열</option><option value="3">3열</option></select></label>
-            <label>정렬<select id="exportSort"><option value="department">부서순</option><option value="name">이름순</option></select></label>
+            <label>정렬<select id="exportSort"><option value="registration" selected>등록순</option><option value="department">부서순</option><option value="name">이름순</option></select></label>
+            <label>출력 방식<select id="exportOutputType"><option value="pdf" selected>PDF</option><option value="xlsx">엑셀</option><option value="print">인쇄하기</option></select></label>
             <label class="inline-check"><input id="exportShowRate" type="checkbox" checked> 서명률 표시</label>
           </div>
-          <button class="button primary" type="submit">PDF·엑셀 만들기</button>
+          <p class="form-hint">모바일에서는 용지 크기에 맞춰 축소되어 보이지만, 저장·인쇄 결과는 A4 규격으로 만들어집니다.</p>
+          <button class="button primary" type="submit">미리보기 만들기</button>
         </form>
         <div id="exportProgress" class="progress-box hidden"><progress max="100" value="0"></progress><p></p></div>
         <div id="exportJobList" class="admin-list"></div>
@@ -253,6 +254,27 @@
         <div class="subcard share-admin-card"><div id="adminQrCode" class="qr-box"></div><label>공유 링크<input id="adminShareUrl" readonly></label><button id="adminCopyShare" class="button primary" type="button">링크 복사</button><button id="rotateShareToken" class="button danger" type="button">공유 키 교체</button></div>
         <form id="changePasswordForm" class="subcard"><h4>관리자 비밀번호 변경</h4><p>숫자 4자리 또는 문자와 숫자를 포함한 10자 이상을 사용할 수 있습니다.</p><label>현재 비밀번호<input id="currentPassword" type="password" minlength="4" maxlength="100" required></label><label>새 비밀번호<input id="newPassword" type="password" minlength="4" maxlength="100" title="숫자 4자리 또는 문자와 숫자를 포함한 10자 이상" required></label><button class="button secondary" type="submit">비밀번호 변경</button></form>
       </section>
+    </div>
+  </dialog>
+
+  <dialog id="exportPreviewDialog" class="dialog export-preview-dialog" aria-labelledby="exportPreviewTitle">
+    <header class="export-preview-toolbar">
+      <div>
+        <p class="eyebrow">A4 출력 확인</p>
+        <h2 id="exportPreviewTitle">출력 미리보기</h2>
+        <p id="exportPreviewMeta">실제 서명 이미지가 포함된 문서입니다.</p>
+      </div>
+      <div class="export-preview-actions">
+        <button id="closeExportPreview" class="button secondary" type="button">설정으로 돌아가기</button>
+        <button id="confirmExportPreview" class="button primary" type="button">PDF 내려받기</button>
+      </div>
+    </header>
+    <div class="export-preview-stage">
+      <div id="exportPreviewLoading" class="export-preview-loading">
+        <div class="spinner" aria-hidden="true"></div>
+        <p>미리보기를 불러오는 중입니다.</p>
+      </div>
+      <iframe id="exportPreviewFrame" title="서명등록부 A4 미리보기"></iframe>
     </div>
   </dialog>
 
