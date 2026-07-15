@@ -14,6 +14,14 @@ export function formatKoreanDate(value) {
   return `${year}년 ${month}월 ${day}일`;
 }
 
+export function formatKoreanHeaderDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return '';
+  const [year, month, day] = value.split('-').map(Number);
+  const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
+  const weekday = weekdays[new Date(Date.UTC(year, month - 1, day)).getUTCDay()];
+  return `${month}월 ${day}일 (${weekday})`;
+}
+
 export function todaySeoul(now = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: SEOUL_TIME_ZONE,

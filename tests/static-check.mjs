@@ -29,6 +29,9 @@ expect(/오늘 참여할 수 있는 연수가 없습니다/.test(index), '연수
 expect(/날짜·시간·활성 상태/.test(index), '연수가 없을 때 관리자 확인 안내가 없습니다.');
 expect(/rel="icon"[^>]+favicon\.svg/.test(index), '브라우저 파비콘 연결이 없습니다.');
 expect(/class="brand-mark-icon"/.test(index) && !/<div class="brand-mark"[^>]*>서명/.test(index), '왼쪽 위 브랜드 표시가 펜 아이콘으로 바뀌지 않았습니다.');
+expect(/--mark-blue:\s*#2563eb/.test(read('assets/styles.css')), '왼쪽 위 펜 아이콘에 파란색이 고정되지 않았습니다.');
+expect(/id="schoolDate"/.test(index) && /formatKoreanHeaderDate/.test(app), '메인 화면 날짜 표시가 없습니다.');
+expect(/data-panel="trainingPanel"[\s\S]*overflow:\s*hidden/.test(read('assets/styles.css')), '첫 단계 한 화면 배치 규칙이 없습니다.');
 expect(/LockService/.test(backend), '동시 제출 잠금이 누락되었습니다.');
 expect(/setTrashed\(true\)/.test(backend), '원본 파일 삭제 처리가 누락되었습니다.');
 expect(/function onOpen\(\)/.test(backend) && /🖊️ 전자서명 관리/.test(backend), '연결형 시트 관리 메뉴가 누락되었습니다.');

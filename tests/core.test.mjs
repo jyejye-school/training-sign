@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildShareUrl,
+  formatKoreanHeaderDate,
   groupStaffByDepartment,
   isPrivacyReady,
   isValidAdminPassword,
@@ -13,6 +14,11 @@ import {
   splitNames,
   validateTraining
 } from '../assets/core.js';
+
+test('메인 화면 날짜에 요일을 함께 표시한다', () => {
+  assert.equal(formatKoreanHeaderDate('2026-07-15'), '7월 15일 (수)');
+  assert.equal(formatKoreanHeaderDate('잘못된 날짜'), '');
+});
 
 test('공유 키는 올바른 형식만 읽는다', () => {
   assert.equal(parseShareToken('#k=Abcd_12345678901234567890'), 'Abcd_12345678901234567890');

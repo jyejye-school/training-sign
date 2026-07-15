@@ -1,6 +1,7 @@
 import {
   buildShareUrl,
   formatKoreanDate,
+  formatKoreanHeaderDate,
   groupStaffByDepartment,
   isPrivacyReady,
   isValidAdminPassword,
@@ -11,7 +12,7 @@ import {
   todaySeoul,
   trainingTimeLabel,
   validateTraining
-} from './core.js';
+} from './core.js?v=20260715.1';
 
 const $ = id => document.getElementById(id);
 const config = window.TRAINING_SIGN_CONFIG || {};
@@ -218,12 +219,14 @@ function applySettings(settings) {
   document.documentElement.style.setProperty('--brand', color);
   $('schoolName').textContent = settings.schoolName || config.APP_NAME || '학교 연수 전자서명';
   $('schoolSubtitle').textContent = settings.subtitle || '연수 참여 확인';
+  $('schoolDate').textContent = formatKoreanHeaderDate(state.publicData?.serverDate || todaySeoul());
   document.title = `${settings.schoolName || '학교'} 연수 전자서명`;
   $('noticeText').textContent = settings.notice || '';
   setHidden($('noticePanel'), !settings.notice);
 }
 
 function showPanel(panelId) {
+  document.body.dataset.panel = panelId;
   ['loadingPanel', 'invalidPanel', 'trainingPanel', 'personPanel', 'signaturePanel', 'successPanel']
     .forEach(id => setHidden($(id), id !== panelId));
   const step = panelId === 'personPanel' ? 2 : panelId === 'signaturePanel' ? 3 : 1;
@@ -1123,9 +1126,9 @@ async function logoutAdmin() {
 }
 
 async function initializePublicApp() {
+  $('schoolDate').textContent = formatKoreanHeaderDate(todaySeoul());
   if (!shareToken) {
-    setHidden($('loadingPanel'), true);
-    setHidden($('invalidPanel'), false);
+    showPanel('invalidPanel');
     return;
   }
   try {

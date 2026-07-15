@@ -1,4 +1,5 @@
 :root {
+  --mark-blue: #2563eb;
   --brand: #315c54;
   --brand-dark: #1f403a;
   --brand-soft: #e7f0ed;
@@ -16,7 +17,7 @@
 
 * { box-sizing: border-box; }
 html { min-height: 100%; background: var(--canvas); }
-body { margin: 0; min-height: 100vh; color: var(--ink); background: radial-gradient(circle at 12% 0%, #e2eeea 0, transparent 34rem), var(--canvas); }
+body { display: flex; flex-direction: column; margin: 0; min-height: 100vh; color: var(--ink); background: radial-gradient(circle at 12% 0%, #e2eeea 0, transparent 34rem), var(--canvas); }
 button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: .5; }
@@ -32,11 +33,14 @@ h2, h3 { letter-spacing: -.025em; }
 .skip-link:focus { top: 1rem; }
 .hidden { display: none !important; }
 .site-header { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: .85rem; min-height: 76px; padding: .7rem clamp(1rem, 3vw, 2.4rem); border-bottom: 1px solid rgba(49, 92, 84, .13); background: rgba(248, 251, 250, .9); backdrop-filter: blur(16px); }
-.brand-mark { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 15px 15px 15px 4px; background: var(--brand); color: white; font-size: .79rem; font-weight: 900; box-shadow: 0 8px 22px color-mix(in srgb, var(--brand) 25%, transparent); }
+.brand-mark { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 15px 15px 15px 4px; background: var(--mark-blue); color: white; font-size: .79rem; font-weight: 900; box-shadow: 0 8px 22px rgba(37, 99, 235, .24); }
 .brand-mark-icon { display: block; width: 32px; height: 32px; }
 .brand-copy { min-width: 0; }
 .school-name { margin: 0; font-weight: 900; letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.school-subtitle { margin: .15rem 0 0; color: var(--muted); font-size: .82rem; }
+.school-meta { display: flex; align-items: center; gap: .32rem; min-width: 0; margin-top: .15rem; color: var(--muted); font-size: .78rem; }
+.school-date, .school-subtitle { margin: 0; white-space: nowrap; }
+.school-date { color: var(--brand-dark); font-weight: 800; }
+.school-subtitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .header-actions { display: flex; align-items: center; gap: .45rem; margin-left: auto; }
 .icon-button, .close-button { border: 0; border-radius: 11px; background: #fff; color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); padding: .62rem .78rem; font-weight: 750; }
 .close-button { width: 42px; height: 42px; padding: 0; font-size: 1.55rem; line-height: 1; }
@@ -100,6 +104,37 @@ h2, h3 { letter-spacing: -.025em; }
 .spinner { width: 38px; height: 38px; margin: 0 auto 1rem; border: 4px solid #dce4e1; border-top-color: var(--brand); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .site-footer { display: flex; justify-content: center; gap: 1rem; padding: 1.5rem; color: #7a8783; font-size: .78rem; }
+
+body[data-panel="loadingPanel"],
+body[data-panel="invalidPanel"],
+body[data-panel="trainingPanel"] { height: 100vh; height: 100svh; overflow: hidden; }
+body[data-panel="loadingPanel"] .page-shell,
+body[data-panel="invalidPanel"] .page-shell,
+body[data-panel="trainingPanel"] .page-shell { display: flex; flex: 1 1 auto; flex-direction: column; width: min(960px, calc(100% - 2rem)); min-height: 0; margin: clamp(.65rem, 1.8vh, 1.15rem) auto .4rem; }
+body[data-panel="loadingPanel"] .notice-panel,
+body[data-panel="invalidPanel"] .notice-panel,
+body[data-panel="trainingPanel"] .notice-panel { flex: 0 0 auto; margin-bottom: .55rem; padding: .65rem .85rem; }
+body[data-panel="loadingPanel"] .notice-panel h2,
+body[data-panel="invalidPanel"] .notice-panel h2,
+body[data-panel="trainingPanel"] .notice-panel h2 { display: none; }
+body[data-panel="loadingPanel"] .notice-panel p,
+body[data-panel="invalidPanel"] .notice-panel p,
+body[data-panel="trainingPanel"] .notice-panel p { display: -webkit-box; overflow: hidden; font-size: .82rem; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+body[data-panel="loadingPanel"] .stepper,
+body[data-panel="invalidPanel"] .stepper,
+body[data-panel="trainingPanel"] .stepper { flex: 0 0 auto; margin-bottom: .55rem; }
+body[data-panel="loadingPanel"] #loadingPanel,
+body[data-panel="invalidPanel"] #invalidPanel,
+body[data-panel="trainingPanel"] #trainingPanel { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+body[data-panel="loadingPanel"] .centered,
+body[data-panel="invalidPanel"] .centered { display: grid; place-content: center; padding-block: clamp(1.2rem, 3vh, 2rem); }
+body[data-panel="trainingPanel"] #trainingPanel { padding: clamp(1rem, 2.5vh, 1.6rem); }
+body[data-panel="trainingPanel"] #trainingPanel h1 { font-size: clamp(1.4rem, 3vw, 1.9rem); }
+body[data-panel="trainingPanel"] .empty-state { margin-top: .75rem; padding: clamp(.85rem, 2vh, 1.25rem) 1rem; }
+body[data-panel="trainingPanel"] .empty-training-icon { width: 40px; height: 40px; }
+body[data-panel="loadingPanel"] .site-footer,
+body[data-panel="invalidPanel"] .site-footer,
+body[data-panel="trainingPanel"] .site-footer { flex: 0 0 auto; padding: .55rem 1rem; border-top: 1px solid rgba(49, 92, 84, .1); background: rgba(248, 251, 250, .92); }
 
 .dialog { width: min(92vw, 560px); max-height: 88vh; border: 0; border-radius: 22px; padding: 0; color: var(--ink); box-shadow: 0 30px 90px rgba(19, 37, 32, .28); }
 .dialog::backdrop { background: rgba(20, 35, 31, .55); backdrop-filter: blur(4px); }
@@ -169,10 +204,13 @@ h2, h3 { letter-spacing: -.025em; }
 .toast { position: fixed; left: 50%; bottom: 1.5rem; z-index: 100; transform: translateX(-50%); min-width: min(360px, calc(100vw - 2rem)); border-radius: 12px; padding: .85rem 1rem; background: #17211f; color: #fff; text-align: center; box-shadow: 0 15px 40px rgba(0,0,0,.22); }
 
 @media (max-width: 720px) {
-  .site-header { min-height: 68px; padding-inline: .8rem; }
-  .brand-mark { width: 42px; height: 42px; }
-  .brand-mark-icon { width: 28px; height: 28px; }
-  .icon-button { padding: .55rem .62rem; font-size: .8rem; }
+  .site-header { min-height: 62px; padding: .45rem .7rem; gap: .6rem; }
+  .brand-mark { width: 40px; height: 40px; border-radius: 13px 13px 13px 4px; }
+  .brand-mark-icon { width: 27px; height: 27px; }
+  .school-name { font-size: .88rem; }
+  .school-meta { gap: .22rem; font-size: .68rem; }
+  .icon-button { padding: .48rem .55rem; font-size: .76rem; }
+  .header-actions { gap: .28rem; }
   .page-shell { width: min(100% - 1rem, 820px); margin-top: 1rem; }
   .card { border-radius: 18px; }
   .two-column, .three-column { grid-template-columns: 1fr; }
@@ -192,6 +230,40 @@ h2, h3 { letter-spacing: -.025em; }
   .export-preview-actions .button { flex: 1; }
   .export-preview-stage { height: calc(100% - 148px); padding: .45rem; }
   .export-preview-loading { inset: .45rem; }
+
+  body[data-panel="loadingPanel"] .page-shell,
+  body[data-panel="invalidPanel"] .page-shell,
+  body[data-panel="trainingPanel"] .page-shell { width: calc(100% - .75rem); margin: .45rem auto .25rem; }
+  body[data-panel="loadingPanel"] .notice-panel,
+  body[data-panel="invalidPanel"] .notice-panel,
+  body[data-panel="trainingPanel"] .notice-panel { margin-bottom: .35rem; padding: .45rem .65rem; }
+  body[data-panel="loadingPanel"] .notice-panel p,
+  body[data-panel="invalidPanel"] .notice-panel p,
+  body[data-panel="trainingPanel"] .notice-panel p { font-size: .72rem; -webkit-line-clamp: 1; }
+  body[data-panel="loadingPanel"] .stepper,
+  body[data-panel="invalidPanel"] .stepper,
+  body[data-panel="trainingPanel"] .stepper { margin-bottom: .35rem; }
+  body[data-panel="loadingPanel"] .stepper li,
+  body[data-panel="invalidPanel"] .stepper li,
+  body[data-panel="trainingPanel"] .stepper li { padding: .38rem .45rem; }
+  body[data-panel="loadingPanel"] #loadingPanel,
+  body[data-panel="invalidPanel"] #invalidPanel,
+  body[data-panel="trainingPanel"] #trainingPanel { border-radius: 17px; }
+  body[data-panel="invalidPanel"] #invalidPanel { padding: .9rem; }
+  body[data-panel="invalidPanel"] #invalidPanel h1 { font-size: clamp(1.25rem, 6vw, 1.55rem); }
+  body[data-panel="invalidPanel"] .empty-icon { width: 44px; height: 44px; margin-bottom: .65rem; font-size: 1.35rem; }
+  body[data-panel="invalidPanel"] .invalid-admin-help { margin-top: .65rem; font-size: .74rem; }
+  body[data-panel="trainingPanel"] #trainingPanel { padding: .85rem; }
+  body[data-panel="trainingPanel"] #trainingPanel h1 { font-size: clamp(1.22rem, 5.8vw, 1.5rem); }
+  body[data-panel="trainingPanel"] #trainingPanel .helper { margin-bottom: .55rem; font-size: .76rem; }
+  body[data-panel="trainingPanel"] .empty-state { margin-top: .45rem; padding: .7rem .65rem; }
+  body[data-panel="trainingPanel"] .empty-training-icon { width: 34px; height: 34px; }
+  body[data-panel="trainingPanel"] .empty-training strong { font-size: .9rem; }
+  body[data-panel="trainingPanel"] .empty-training p,
+  body[data-panel="trainingPanel"] .empty-training small { font-size: .72rem; line-height: 1.4; }
+  body[data-panel="loadingPanel"] .site-footer,
+  body[data-panel="invalidPanel"] .site-footer,
+  body[data-panel="trainingPanel"] .site-footer { gap: .55rem; padding: .42rem .7rem; font-size: .68rem; }
 }
 
 @media print {
