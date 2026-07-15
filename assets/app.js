@@ -598,35 +598,36 @@ async function refreshActiveAdminSection() {
   }
 }
 
-async function openAdminLogin() {
+function setAdminLoginMode(setupRequired) {
+  $('adminLoginTitle').textContent = setupRequired ? '관리자 첫 설정' : '관리자 로그인';
+  $('adminLoginSubmit').textContent = setupRequired ? '비밀번호 설정' : '로그인';
+  setHidden($('setupCodeLabel'), !setupRequired);
+  setHidden($('adminPasswordConfirmLabel'), !setupRequired);
+  $('setupCode').required = setupRequired;
+  $('adminPasswordConfirm').required = setupRequired;
+  $('adminPassword').autocomplete = setupRequired ? 'new-password' : 'current-password';
+  $('adminLoginForm').dataset.setupRequired = setupRequired ? '1' : '0';
+  $('adminLoginSubmit').disabled = false;
+}
+
+function openAdminLogin() {
   const errorBox = $('adminLoginError');
   $('adminLoginError').textContent = '';
   setHidden($('adminLoginError'), true);
   $('adminPassword').value = '';
   $('adminPasswordConfirm').value = '';
   $('setupCode').value = '';
-  $('adminLoginTitle').textContent = '관리자 확인 중';
-  $('adminLoginSubmit').textContent = '확인 중…';
-  $('adminLoginSubmit').disabled = true;
+  setAdminLoginMode(false);
   if (!$('adminLoginDialog').open) $('adminLoginDialog').showModal();
-  try {
-    const status = await rpc('get_setup_status', {}, { admin: false });
-    const setupRequired = !status.adminConfigured;
-    $('adminLoginTitle').textContent = setupRequired ? '관리자 첫 설정' : '관리자 로그인';
-    $('adminLoginSubmit').textContent = setupRequired ? '비밀번호 설정' : '로그인';
-    setHidden($('setupCodeLabel'), !setupRequired);
-    setHidden($('adminPasswordConfirmLabel'), !setupRequired);
-    $('setupCode').required = setupRequired;
-    $('adminPasswordConfirm').required = setupRequired;
-    $('adminPassword').autocomplete = setupRequired ? 'new-password' : 'current-password';
-    $('adminLoginForm').dataset.setupRequired = setupRequired ? '1' : '0';
-    $('adminLoginSubmit').disabled = false;
-    $('adminPassword').focus();
-  } catch (error) {
-    errorBox.textContent = error.message;
-    setHidden(errorBox, false);
-    $('adminLoginSubmit').disabled = false;
-  }
+  $('adminPassword').focus();
+  rpc('get_setup_status', {}, { admin: false }).then(status => {
+    if (!state.adminSession) setAdminLoginMode(!status.adminConfigured);
+  }).catch(error => {
+    if ($('adminLoginDialog').open) {
+      errorBox.textContent = error.message;
+      setHidden(errorBox, false);
+    }
+  });
 }
 
 async function handleAdminLogin(event) {

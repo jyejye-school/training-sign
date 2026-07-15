@@ -20,6 +20,8 @@ expect(!/unsafe-inline|unsafe-eval/.test(index), 'CSP에 unsafe 설정이 있습
 expect(/get_public_data/.test(backend) && /submit_signature/.test(backend), '공개 API가 누락되었습니다.');
 expect(/requireAdminSession_/.test(backend), '관리자 세션 검증이 누락되었습니다.');
 expect(/view:\s*'bootstrap'/.test(app), '관리자 로그인이 빠른 bootstrap 보기를 요청하지 않습니다.');
+expect(/setAdminLoginMode\(false\)[\s\S]*showModal\(\)[\s\S]*get_setup_status/.test(app), '관리자 로그인 창이 초기 설정 확인보다 먼저 열리지 않습니다.');
+expect(!/관리자 확인 중|확인 중…/.test(app), '관리자 로그인 버튼에 불필요한 확인 중 대기가 남아 있습니다.');
 expect(/get_admin_section/.test(app + backend) && /function getAdminSection_/.test(backend), '관리자 탭별 지연 로딩 API가 누락되었습니다.');
 expect(/id="adminRefresh"/.test(index) && /refreshActiveAdminSection/.test(app), '관리자 수동 새로고침 기능이 누락되었습니다.');
 expect(/ADMIN_SYNC_MS\s*=\s*30000/.test(app), '관리자 화면의 30초 백그라운드 동기화가 누락되었습니다.');
