@@ -183,6 +183,7 @@ body[data-panel="trainingPanel"] .site-footer { flex: 0 0 auto; padding: .55rem 
 .subcard { display: grid; gap: 1rem; margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--line); border-radius: 16px; background: #fbfcfc; }
 .admin-list { display: grid; gap: .6rem; }
 .admin-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .8rem; align-items: center; padding: .85rem; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+.admin-row.pending-row { border-style: dashed; background: var(--brand-soft); }
 .admin-row-main { min-width: 0; }
 .admin-row-main strong { display: block; }
 .admin-row-main small { color: var(--muted); }

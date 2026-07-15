@@ -24,6 +24,7 @@ expect(/get_admin_section/.test(app + backend) && /function getAdminSection_/.te
 expect(/id="adminRefresh"/.test(index) && /refreshActiveAdminSection/.test(app), '관리자 수동 새로고침 기능이 누락되었습니다.');
 expect(/ADMIN_SYNC_MS\s*=\s*30000/.test(app), '관리자 화면의 30초 백그라운드 동기화가 누락되었습니다.');
 expect(!/await\s+refreshAdminData\s*\(/.test(app), '단순 저장 뒤 전체 관리자 데이터를 다시 읽고 있습니다.');
+expect(/pendingTraining/.test(app) && /state\.adminData\.trainings = previousTrainings/.test(app), '연수 저장의 즉시 화면 반영 또는 실패 복구가 누락되었습니다.');
 expect(/REQUEST_CONTEXT_/.test(backend) && /context\.spreadsheet/.test(backend) && /context\.rows/.test(backend), 'Apps Script 요청 범위 시트·행 캐시가 누락되었습니다.');
 const loginBody = backend.slice(backend.indexOf('function adminLogin_'), backend.indexOf('function createAdminLoginResult_'));
 expect(!/cleanupStaleExportJobs/.test(loginBody), '관리자 로그인 중 오래된 출력 작업 정리가 실행됩니다.');

@@ -700,6 +700,7 @@ function switchAdminTab(tab, { sync = true } = {}) {
 }
 
 function trainingMeta(training) {
+  if (training.pending) return '서버에 저장하는 중…';
   return [trainingTimeLabel(training), training.active ? '활성' : '비활성'].join(' · ');
 }
 
@@ -727,13 +728,13 @@ function renderTrainingAdmin() {
   const container = $('trainingAdminList');
   const trainings = state.adminData?.trainings || [];
   container.innerHTML = trainings.length ? trainings.map((training, index) => `
-    <div class="admin-row" data-training-id="${escapeHtml(training.id)}">
+    <div class="admin-row${training.pending ? ' pending-row' : ''}" data-training-id="${escapeHtml(training.id)}">
       <div class="admin-row-main"><strong>${escapeHtml(training.title)}</strong><small>${escapeHtml(trainingMeta(training))}</small></div>
       <div class="row-actions">
-        <button data-action="move-up" ${index === 0 ? 'disabled' : ''}>위</button>
-        <button data-action="move-down" ${index === trainings.length - 1 ? 'disabled' : ''}>아래</button>
-        <button data-action="edit-training">수정</button>
-        <button data-action="delete-training" class="danger">삭제</button>
+        <button data-action="move-up" ${training.pending || index === 0 ? 'disabled' : ''}>위</button>
+        <button data-action="move-down" ${training.pending || index === trainings.length - 1 ? 'disabled' : ''}>아래</button>
+        <button data-action="edit-training" ${training.pending ? 'disabled' : ''}>수정</button>
+        <button data-action="delete-training" class="danger" ${training.pending ? 'disabled' : ''}>삭제</button>
       </div>
     </div>`).join('') : '<div class="empty-state">등록된 연수가 없습니다.</div>';
 }
@@ -769,14 +770,31 @@ async function saveTraining(event) {
     setHidden($('trainingFormError'), false);
     return;
   }
+  const previousTrainings = state.adminData.trainings.map(item => ({ ...item }));
+  const existing = training.id ? state.adminData.trainings.find(item => item.id === training.id) : null;
+  const pendingId = training.id || `pending-${Date.now()}`;
+  const pendingTraining = {
+    ...(existing || {}), ...training, id: pendingId,
+    sortOrder: existing?.sortOrder || Math.max(0, ...state.adminData.trainings.map(item => Number(item.sortOrder || 0))) + 1,
+    pending: true
+  };
+  state.adminData.trainings = sortByRegistration(upsertAdminItem(state.adminData.trainings, pendingTraining));
+  renderAdminSection('trainings');
+  setHidden($('trainingForm'), true);
+  showToast('연수를 저장하는 중입니다…', 5000);
   try {
     const result = await rpc('save_training', { training });
+    state.adminData.trainings = state.adminData.trainings.filter(item => item.id !== pendingId);
     state.adminData.trainings = sortByRegistration(upsertAdminItem(state.adminData.trainings, result.training));
     markAdminSectionLoaded('trainings');
     renderAdminSection('trainings');
-    setHidden($('trainingForm'), true);
     showToast('연수를 저장했습니다.');
-  } catch (error) { showToast(error.message, 4200); }
+  } catch (error) {
+    state.adminData.trainings = previousTrainings;
+    renderAdminSection('trainings');
+    openTrainingForm(existing || training);
+    showToast(error.message, 4200);
+  }
 }
 
 async function handleTrainingListClick(event) {
@@ -784,7 +802,8 @@ async function handleTrainingListClick(event) {
   const row = event.target.closest('[data-training-id]');
   if (!button || !row) return;
   const training = state.adminData.trainings.find(item => item.id === row.dataset.trainingId);
-  if (!training) return;
+  if (!training || training.pending) return;
+  const previousTrainings = state.adminData.trainings.map(item => ({ ...item }));
   try {
     if (button.dataset.action === 'edit-training') return openTrainingForm(training);
     if (button.dataset.action === 'delete-training') {
@@ -795,15 +814,29 @@ async function handleTrainingListClick(event) {
         danger: true
       });
       if (!confirmed) return;
+      state.adminData.trainings = state.adminData.trainings.filter(item => item.id !== training.id);
+      renderAdminSection('trainings');
       const result = await rpc('delete_training', { trainingId: training.id });
       state.adminData.trainings = state.adminData.trainings.filter(item => item.id !== (result.deletedId || training.id));
     } else {
+      const direction = button.dataset.action === 'move-up' ? -1 : 1;
+      const currentIndex = state.adminData.trainings.findIndex(item => item.id === training.id);
+      const targetIndex = currentIndex + direction;
+      if (targetIndex < 0 || targetIndex >= state.adminData.trainings.length) return;
+      const optimistic = [...state.adminData.trainings];
+      [optimistic[currentIndex], optimistic[targetIndex]] = [optimistic[targetIndex], optimistic[currentIndex]];
+      state.adminData.trainings = optimistic.map((item, index) => ({ ...item, sortOrder: index + 1 }));
+      renderAdminSection('trainings');
       const result = await rpc('move_training', { trainingId: training.id, direction: button.dataset.action === 'move-up' ? 'up' : 'down' });
       if (Array.isArray(result.trainings)) state.adminData.trainings = result.trainings;
     }
     markAdminSectionLoaded('trainings');
     renderAdminSection('trainings');
-  } catch (error) { showToast(error.message, 4200); }
+  } catch (error) {
+    state.adminData.trainings = previousTrainings;
+    renderAdminSection('trainings');
+    showToast(error.message, 4200);
+  }
 }
 
 function renderStaffAdmin() {
@@ -954,7 +987,7 @@ async function saveSettings(event) {
 }
 
 function populateTrainingSelects() {
-  const options = (state.adminData?.trainings || []).map(training => `<option value="${escapeHtml(training.id)}">${escapeHtml(training.title)}</option>`).join('');
+  const options = (state.adminData?.trainings || []).filter(training => !training.pending).map(training => `<option value="${escapeHtml(training.id)}">${escapeHtml(training.title)}</option>`).join('');
   ['recordTraining', 'exportTraining'].forEach(id => { $(id).innerHTML = `<option value="">연수 선택</option>${options}`; });
   if (!$('recordDate').value) $('recordDate').value = todaySeoul();
   if (!$('exportDate').value) $('exportDate').value = todaySeoul();
