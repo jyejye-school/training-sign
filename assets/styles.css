@@ -92,6 +92,9 @@ h2, h3 { letter-spacing: -.025em; }
 .empty-training b { color: var(--brand-dark); }
 .empty-icon, .success-icon { display: grid; place-items: center; width: 64px; height: 64px; margin: 0 auto 1rem; border-radius: 22px; font-size: 2rem; font-weight: 900; }
 .empty-icon { background: #fff0ee; color: var(--danger); }
+.empty-icon-neutral { background: var(--brand-soft); color: var(--brand); }
+.invalid-admin-help { max-width: 36rem; margin: 1rem auto 0; color: var(--muted); font-size: .88rem; line-height: 1.65; }
+.invalid-admin-help b { color: var(--brand-dark); }
 .success-icon { background: var(--brand-soft); color: var(--brand); }
 .spinner { width: 38px; height: 38px; margin: 0 auto 1rem; border: 4px solid #dce4e1; border-top-color: var(--brand); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }

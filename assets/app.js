@@ -1136,7 +1136,9 @@ async function initializePublicApp() {
     showPanel('trainingPanel');
     if (DEMO) showStatus('데모 화면입니다. 입력 내용은 실제로 저장되지 않습니다.', false);
   } catch (error) {
-    $('invalidMessage').textContent = error.message;
+    const unavailable = error.code === 'INVALID_LINK';
+    $('invalidTitle').textContent = unavailable ? '오늘 참여할 수 있는 연수가 없습니다' : '서명 화면을 준비하지 못했습니다';
+    $('invalidMessage').textContent = unavailable ? '연수 일정 또는 공유 링크를 다시 확인해 주세요.' : error.message;
     showPanel('invalidPanel');
   }
 }

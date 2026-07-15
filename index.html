@@ -7,11 +7,11 @@
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://script.google.com https://script.googleusercontent.com; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'">
   <title>학교 연수 전자서명</title>
-  <link rel="stylesheet" href="assets/styles.css?v=20260715.1">
+  <link rel="stylesheet" href="assets/styles.css?v=20260715.2">
   <script src="assets/config.js"></script>
   <script src="vendor/qrcode.js" defer></script>
   <script src="vendor/xlsx.full.min.js" defer></script>
-  <script type="module" src="assets/app.js?v=20260715.1"></script>
+  <script type="module" src="assets/app.js?v=20260715.2"></script>
 </head>
 <body>
   <a class="skip-link" href="#mainContent">본문으로 바로가기</a>
@@ -47,9 +47,10 @@
     </section>
 
     <section id="invalidPanel" class="card centered hidden">
-      <div class="empty-icon" aria-hidden="true">!</div>
-      <h1>서명 화면을 열 수 없습니다</h1>
-      <p id="invalidMessage">공유받은 링크나 QR을 다시 확인해 주세요.</p>
+      <div class="empty-icon empty-icon-neutral" aria-hidden="true">—</div>
+      <h1 id="invalidTitle">오늘 참여할 수 있는 연수가 없습니다</h1>
+      <p id="invalidMessage">연수 일정 또는 공유 링크를 다시 확인해 주세요.</p>
+      <p class="invalid-admin-help">관리자는 오른쪽 위 <b>관리자</b>에서 연수의 날짜·시간·활성 상태를 확인할 수 있습니다.</p>
     </section>
 
     <section id="trainingPanel" class="card hidden" aria-labelledby="trainingHeading">
