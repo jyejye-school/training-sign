@@ -5,7 +5,7 @@
  */
 
 const APP = Object.freeze({
-  VERSION: '1.4.0',
+  VERSION: '1.5.0',
   TIME_ZONE: 'Asia/Seoul',
   DATA_FILE: '학교 연수 전자서명 데이터',
   GUIDE_SHEET: '사용설명서',
@@ -483,8 +483,17 @@ function getAdminBootstrap_() {
 
 function getAdminSection_(section) {
   const name = string_(section, 30);
-  if (['staff', 'exports', 'settings', 'share', 'trainings'].indexOf(name) < 0) {
+  if (['staff', 'exports', 'settings', 'share', 'trainings', 'training_workspace'].indexOf(name) < 0) {
     apiError_('VALIDATION', '불러올 관리자 화면이 올바르지 않습니다.');
+  }
+  if (name === 'training_workspace') {
+    return {
+      section: name,
+      trainings: readRows_(SHEETS.TRAININGS).sort(orderSort_).map(publicTraining_),
+      exports: readRows_(SHEETS.EXPORTS)
+        .sort(function(a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); })
+        .map(publicJob_)
+    };
   }
   if (name === 'staff') {
     return { section: name, staff: readRows_(SHEETS.STAFF).sort(staffSort_).map(publicStaff_) };

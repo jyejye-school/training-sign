@@ -27,9 +27,8 @@ const DEFAULT_FAVICON_URL = 'favicon.svg?v=20260715.2';
 const FAVICON_MAX_SOURCE_BYTES = 2 * 1024 * 1024;
 const FAVICON_MAX_PNG_BYTES = 32 * 1024;
 const ADMIN_SECTION_FOR_TAB = Object.freeze({
-  trainings: 'trainings',
+  trainings: 'training_workspace',
   staff: 'staff',
-  exports: 'exports',
   settings: 'settings',
   share: 'share'
 });
@@ -52,7 +51,8 @@ const state = {
   adminSyncTimer: null,
   adminAuthenticating: false,
   settingsFaviconData: '',
-  staffNamesComposing: false
+  staffNamesComposing: false,
+  activeExportTrainingId: ''
 };
 
 const demoData = {
@@ -210,6 +210,7 @@ function demoRpc(action, payload) {
     return Promise.resolve({ sessionToken: 'demo-session', expiresIn: 1800, adminData });
   }
   if (action === 'get_admin_section') {
+    if (payload.section === 'training_workspace') return Promise.resolve({ section: 'training_workspace', trainings: state.demoAdminData.trainings, exports: state.demoAdminData.exports });
     if (payload.section === 'staff') return Promise.resolve({ section: 'staff', staff: state.demoAdminData.staff });
     if (payload.section === 'exports') return Promise.resolve({ section: 'exports', exports: state.demoAdminData.exports });
     if (payload.section === 'settings') return Promise.resolve({ section: 'settings', settings: state.demoAdminData.settings });
@@ -536,13 +537,11 @@ function mergeAdminSection(data) {
 }
 
 function renderAdminSection(section) {
-  if (section === 'trainings') {
+  if (section === 'trainings' || section === 'training_workspace') {
     renderTrainingAdmin();
     populateTrainingSelects();
-    restoreExportSettings();
   }
   if (section === 'staff') renderStaffAdmin();
-  if (section === 'exports') renderExportJobs();
   if (section === 'settings') fillSettingsForm();
   if (section === 'share') renderShareAdmin();
 }
@@ -589,23 +588,6 @@ function handleExpiredAdminSession(message = '관리자 로그인이 만료되�
   state.adminLoadedAt = {};
   if ($('adminDialog').open) $('adminDialog').close();
   showToast(message, 4200);
-}
-
-async function refreshActiveAdminSection() {
-  const button = $('adminRefresh');
-  const section = ADMIN_SECTION_FOR_TAB[state.adminActiveTab];
-  if (!section) {
-    if ($('recordTraining').value && $('recordDate').value) await loadRecords();
-    else showToast('연수와 날짜를 선택하면 서명 기록을 새로 조회할 수 있습니다.');
-    return;
-  }
-  button.disabled = true;
-  try {
-    await loadAdminSection(section, { force: true });
-    showToast('현재 화면을 새로 불러왔습니다.');
-  } finally {
-    button.disabled = false;
-  }
 }
 
 function setAdminLoginMode(setupRequired) {
@@ -686,6 +668,7 @@ async function handleAdminLogin(event) {
     renderAdmin();
     setAdminAuthenticating(false);
     startAdminBackgroundSync();
+    loadAdminSection('training_workspace', { force: true, background: true }).catch(() => {});
   } catch (error) {
     setAdminAuthenticating(false);
     state.adminSession = '';
@@ -731,23 +714,74 @@ function upsertExportJob(job) {
   if (!job || !state.adminData) return;
   state.adminData.exports = upsertAdminItem(state.adminData.exports, job, 'jobId')
     .sort((a, b) => String(b.createdAt || b.updatedAt || '').localeCompare(String(a.createdAt || a.updatedAt || '')));
-  markAdminSectionLoaded('exports');
+  markAdminSectionLoaded('training_workspace');
   renderExportJobs();
+  renderOrphanExportJobs();
 }
 
 function renderTrainingAdmin() {
   const container = $('trainingAdminList');
+  const panel = $('trainingExportPanel');
+  const panelHome = $('trainingExportPanelHome');
+  if (panel && panelHome && panel.parentElement !== panelHome) panelHome.append(panel);
   const trainings = state.adminData?.trainings || [];
   container.innerHTML = trainings.length ? trainings.map((training, index) => `
-    <div class="admin-row${training.pending ? ' pending-row' : ''}" data-training-id="${escapeHtml(training.id)}">
-      <div class="admin-row-main"><strong>${escapeHtml(training.title)}</strong><small>${escapeHtml(trainingMeta(training))}</small></div>
-      <div class="row-actions">
-        <button data-action="move-up" ${training.pending || index === 0 ? 'disabled' : ''}>위</button>
-        <button data-action="move-down" ${training.pending || index === trainings.length - 1 ? 'disabled' : ''}>아래</button>
-        <button data-action="edit-training" ${training.pending ? 'disabled' : ''}>수정</button>
-        <button data-action="delete-training" class="danger" ${training.pending ? 'disabled' : ''}>삭제</button>
+    <div class="training-admin-item" data-training-id="${escapeHtml(training.id)}">
+      <div class="admin-row${training.pending ? ' pending-row' : ''}">
+        <div class="admin-row-main"><strong>${escapeHtml(training.title)}</strong><small>${escapeHtml(trainingMeta(training))}</small></div>
+        <div class="row-actions">
+          <button data-action="move-up" ${training.pending || index === 0 ? 'disabled' : ''}>위</button>
+          <button data-action="move-down" ${training.pending || index === trainings.length - 1 ? 'disabled' : ''}>아래</button>
+          <button data-action="edit-training" ${training.pending ? 'disabled' : ''}>수정</button>
+          <button data-action="toggle-export" aria-controls="trainingExportPanel" aria-expanded="${state.activeExportTrainingId === training.id ? 'true' : 'false'}" ${training.pending ? 'disabled' : ''}>${state.activeExportTrainingId === training.id ? '출력 접기' : '출력'}</button>
+          <button data-action="delete-training" class="danger" ${training.pending ? 'disabled' : ''}>삭제</button>
+        </div>
       </div>
+      <div class="training-export-slot"></div>
     </div>`).join('') : '<div class="empty-state">등록된 연수가 없습니다.</div>';
+  const selected = trainings.find(training => training.id === state.activeExportTrainingId && !training.pending);
+  if (selected && panel) {
+    const preserveForm = panel.dataset.trainingId === selected.id;
+    container.querySelector(`[data-training-id="${CSS.escape(selected.id)}"] .training-export-slot`)?.append(panel);
+    panel.dataset.trainingId = selected.id;
+    setHidden(panel, false);
+    renderTrainingExportPanel(selected, { preserveForm });
+  } else if (panel) {
+    state.activeExportTrainingId = '';
+    panel.dataset.trainingId = '';
+    setHidden(panel, true);
+  }
+  renderOrphanExportJobs();
+}
+
+function renderTrainingExportPanel(training, { preserveForm = false } = {}) {
+  $('trainingExportTitle').textContent = training.title;
+  $('trainingExportDateHint').textContent = training.daily
+    ? '매일 연수는 출력할 날짜를 선택할 수 있습니다.'
+    : `${formatKoreanDate(training.date)} 서명 기록을 출력합니다.`;
+  if (!preserveForm) restoreExportSettings(training);
+  if (!training.daily) {
+    $('exportDate').value = training.date;
+    $('exportDate').disabled = true;
+  } else {
+    $('exportDate').disabled = false;
+  }
+  renderExportJobs();
+}
+
+function collapseTrainingExport() {
+  state.activeExportTrainingId = '';
+  renderTrainingAdmin();
+}
+
+function toggleTrainingExport(training) {
+  if (state.activeExportTrainingId === training.id) return collapseTrainingExport();
+  state.activeExportTrainingId = training.id;
+  renderTrainingAdmin();
+  if (!state.adminLoadedAt.training_workspace) {
+    loadAdminSection('training_workspace', { force: true, background: true }).catch(() => {});
+  }
+  $('trainingExportPanel').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
 function openTrainingForm(training = null) {
@@ -819,6 +853,7 @@ async function handleTrainingListClick(event) {
   const previousTrainings = state.adminData.trainings.map(item => ({ ...item }));
   try {
     if (button.dataset.action === 'edit-training') return openTrainingForm(training);
+    if (button.dataset.action === 'toggle-export') return toggleTrainingExport(training);
     if (button.dataset.action === 'delete-training') {
       const confirmed = await requestConfirmation({
         title: '연수를 삭제할까요?',
@@ -1084,9 +1119,8 @@ async function saveSettings(event) {
 
 function populateTrainingSelects() {
   const options = (state.adminData?.trainings || []).filter(training => !training.pending).map(training => `<option value="${escapeHtml(training.id)}">${escapeHtml(training.title)}</option>`).join('');
-  ['recordTraining', 'exportTraining'].forEach(id => { $(id).innerHTML = `<option value="">연수 선택</option>${options}`; });
+  $('recordTraining').innerHTML = `<option value="">연수 선택</option>${options}`;
   if (!$('recordDate').value) $('recordDate').value = todaySeoul();
-  if (!$('exportDate').value) $('exportDate').value = todaySeoul();
 }
 
 async function loadRecords(event) {
@@ -1181,34 +1215,64 @@ function exportPrimaryActionLabel(outputType) {
   return 'PDF 내려받기';
 }
 
+function exportJobHtml(job, { showTrainingTitle = false } = {}) {
+  const title = showTrainingTitle ? (job.trainingTitle || '삭제된 연수') : `${job.date} 출력`;
+  const meta = showTrainingTitle
+    ? `${job.date} · ${exportOutputLabel(job.outputType)} · ${exportStatusLabel(job)}`
+    : `${exportOutputLabel(job.outputType)} · ${exportStatusLabel(job)}`;
+  return `<div class="admin-row" data-job-id="${escapeHtml(job.jobId)}">
+    <div class="admin-row-main"><strong>${escapeHtml(title)}</strong><small>${escapeHtml(meta)}</small></div>
+    <div class="row-actions">
+      ${job.hasPreview && job.status === 'preview_ready' ? '<button data-action="open-preview">미리보기</button>' : ''}
+      ${job.hasPdf ? '<button data-action="download-pdf">PDF</button>' : ''}
+      ${job.hasXlsx ? '<button data-action="download-xlsx">엑셀</button>' : ''}
+      ${job.canPurge && !job.purgedAt ? '<button class="danger" data-action="purge-originals">원본 삭제</button>' : ''}
+      ${job.status === 'processing' || job.status === 'queued' ? '<button data-action="resume-export">계속 만들기</button>' : ''}
+    </div>
+  </div>`;
+}
+
 function renderExportJobs() {
-  const jobs = state.adminData?.exports || [];
-  $('exportJobList').innerHTML = jobs.length ? jobs.map(job => {
-    const training = state.adminData.trainings.find(item => item.id === job.trainingId);
-    return `<div class="admin-row" data-job-id="${escapeHtml(job.jobId)}">
-      <div class="admin-row-main"><strong>${escapeHtml(training?.title || job.trainingTitle || '삭제된 연수')}</strong><small>${escapeHtml(job.date)} · ${escapeHtml(exportOutputLabel(job.outputType))} · ${escapeHtml(exportStatusLabel(job))}</small></div>
-      <div class="row-actions">
-        ${job.hasPreview && job.status === 'preview_ready' ? '<button data-action="open-preview">미리보기</button>' : ''}
-        ${job.hasPdf ? '<button data-action="download-pdf">PDF</button>' : ''}
-        ${job.hasXlsx ? '<button data-action="download-xlsx">엑셀</button>' : ''}
-        ${job.canPurge && !job.purgedAt ? '<button class="danger" data-action="purge-originals">원본 삭제</button>' : ''}
-        ${job.status === 'processing' || job.status === 'queued' ? '<button data-action="resume-export">계속 만들기</button>' : ''}
-      </div>
-    </div>`;
-  }).join('') : '<div class="empty-state">생성한 출력 파일이 없습니다.</div>';
+  const container = $('exportJobList');
+  if (!state.activeExportTrainingId) {
+    container.replaceChildren();
+    return;
+  }
+  if (!state.adminLoadedAt.training_workspace) {
+    container.innerHTML = '<div class="empty-state">출력 내역을 불러오는 중입니다.</div>';
+    return;
+  }
+  const jobs = (state.adminData?.exports || []).filter(job => job.trainingId === state.activeExportTrainingId);
+  container.innerHTML = jobs.length
+    ? jobs.map(job => exportJobHtml(job)).join('')
+    : '<div class="empty-state">이 연수에서 생성한 출력 파일이 없습니다.</div>';
+}
+
+function renderOrphanExportJobs() {
+  const section = $('orphanExportSection');
+  if (!state.adminLoadedAt.training_workspace) {
+    setHidden(section, true);
+    return;
+  }
+  const trainingIds = new Set((state.adminData?.trainings || []).map(training => training.id));
+  const jobs = (state.adminData?.exports || []).filter(job => !trainingIds.has(job.trainingId));
+  $('orphanExportCount').textContent = jobs.length ? `(${jobs.length}건)` : '';
+  $('orphanExportJobList').innerHTML = jobs.map(job => exportJobHtml(job, { showTrainingTitle: true })).join('');
+  setHidden(section, !jobs.length);
 }
 
 async function startExport(event) {
   event.preventDefault();
+  const training = state.adminData?.trainings.find(item => item.id === state.activeExportTrainingId);
   const payload = {
-    trainingId: $('exportTraining').value,
+    trainingId: training?.id || '',
     date: $('exportDate').value,
     columns: Number($('exportColumns').value),
     sort: $('exportSort').value,
     showRate: $('exportShowRate').checked,
     outputType: $('exportOutputType').value
   };
-  if (!payload.trainingId || !payload.date) return showToast('연수와 날짜를 선택해 주세요.');
+  if (!payload.trainingId || !payload.date) return showToast('출력할 연수와 날짜를 확인해 주세요.');
   try {
     localStorage.setItem(EXPORT_SETTINGS_KEY, JSON.stringify({
       trainingId: payload.trainingId, date: payload.date, columns: String(payload.columns),
@@ -1429,12 +1493,16 @@ async function handleExportJobClick(event) {
   } catch (error) { showToast(error.message, 5200); }
 }
 
-function restoreExportSettings() {
+function restoreExportSettings(training) {
+  $('exportColumns').value = '2';
+  $('exportSort').value = 'registration';
+  $('exportOutputType').value = 'pdf';
+  $('exportShowRate').checked = true;
+  $('exportDate').value = training.daily ? todaySeoul() : training.date;
   try {
     const saved = JSON.parse(localStorage.getItem(EXPORT_SETTINGS_KEY) || 'null');
     if (!saved) return;
-    if ([...$('exportTraining').options].some(option => option.value === saved.trainingId)) $('exportTraining').value = saved.trainingId;
-    if (/^\d{4}-\d{2}-\d{2}$/.test(String(saved.date || ''))) $('exportDate').value = saved.date;
+    if (training.daily && saved.trainingId === training.id && /^\d{4}-\d{2}-\d{2}$/.test(String(saved.date || ''))) $('exportDate').value = saved.date;
     if (['1', '2', '3'].includes(String(saved.columns))) $('exportColumns').value = String(saved.columns);
     if (['registration', 'department', 'name'].includes(saved.sort)) $('exportSort').value = saved.sort;
     if (['pdf', 'xlsx', 'print'].includes(saved.outputType)) $('exportOutputType').value = saved.outputType;
@@ -1446,22 +1514,22 @@ function renderAdmin() {
   renderTrainingAdmin();
   fillSettingsForm();
   populateTrainingSelects();
-  restoreExportSettings();
   if (state.adminLoadedAt.staff) renderStaffAdmin();
   if (state.adminLoadedAt.share) renderShareAdmin();
-  if (state.adminLoadedAt.exports) renderExportJobs();
 }
 
-async function logoutAdmin() {
+function closeAdminAndLogout() {
   closeExportPreview();
-  try { await rpc('logout'); } catch { /* Session may already be gone. */ }
+  const logoutRequest = state.adminSession ? rpc('logout') : Promise.resolve();
   clearInterval(state.adminSyncTimer);
   state.adminSession = '';
   state.adminData = null;
   state.adminLoadedAt = {};
   state.adminSectionPromises = {};
-  $('adminDialog').close();
-  showToast('로그아웃했습니다.');
+  state.activeExportTrainingId = '';
+  state.records = [];
+  if ($('adminDialog').open) $('adminDialog').close();
+  logoutRequest.catch(() => { /* 이미 만료된 서버 세션은 별도 안내가 필요하지 않습니다. */ });
 }
 
 async function initializePublicApp() {
@@ -1506,16 +1574,16 @@ function bindEvents() {
   $('adminButton').addEventListener('click', openAdminLogin);
   $('adminLoginForm').addEventListener('submit', handleAdminLogin);
   $('adminTabs').addEventListener('click', event => { const button = event.target.closest('[data-admin-tab]'); if (button) switchAdminTab(button.dataset.adminTab); });
-  $('adminRefresh').addEventListener('click', () => refreshActiveAdminSection().catch(error => showToast(error.message, 4200)));
-  $('closeAdmin').addEventListener('click', () => {
-    clearInterval(state.adminSyncTimer);
-    $('adminDialog').close();
+  $('closeAdmin').addEventListener('click', closeAdminAndLogout);
+  $('adminDialog').addEventListener('cancel', event => {
+    event.preventDefault();
+    if (!state.adminAuthenticating) closeAdminAndLogout();
   });
-  $('adminLogout').addEventListener('click', logoutAdmin);
   $('newTraining').addEventListener('click', () => openTrainingForm());
   $('cancelTraining').addEventListener('click', () => setHidden($('trainingForm'), true));
   $('trainingForm').addEventListener('submit', saveTraining);
   $('trainingAdminList').addEventListener('click', handleTrainingListClick);
+  $('collapseTrainingExport').addEventListener('click', collapseTrainingExport);
   $('staffNames').addEventListener('compositionstart', () => { state.staffNamesComposing = true; });
   $('staffNames').addEventListener('compositionend', () => { state.staffNamesComposing = false; normalizeStaffNamesField(); });
   $('staffNames').addEventListener('input', event => { if (!state.staffNamesComposing && !event.isComposing) normalizeStaffNamesField(); });
@@ -1537,6 +1605,7 @@ function bindEvents() {
   $('changePasswordForm').addEventListener('submit', changePassword);
   $('exportForm').addEventListener('submit', startExport);
   $('exportJobList').addEventListener('click', handleExportJobClick);
+  $('orphanExportJobList').addEventListener('click', handleExportJobClick);
   $('closeExportPreview').addEventListener('click', closeExportPreview);
   $('confirmExportPreview').addEventListener('click', confirmExportPreview);
   $('exportPreviewDialog').addEventListener('cancel', event => { event.preventDefault(); closeExportPreview(); });

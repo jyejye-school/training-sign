@@ -167,6 +167,7 @@ body[data-panel="trainingPanel"] .site-footer { flex: 0 0 auto; padding: .55rem 
 .action-dialog-card label { display: grid; gap: .45rem; font-weight: 750; }
 .action-dialog-card .button-row { justify-content: flex-end; }
 .admin-header { margin: 0; padding: 1rem 1.25rem; border-bottom: 1px solid var(--line); }
+.admin-close-button { min-width: 64px; white-space: nowrap; }
 .admin-tabs { display: flex; gap: .35rem; overflow-x: auto; padding: .65rem 1.1rem; border-bottom: 1px solid var(--line); background: #f8faf9; }
 .admin-tabs button { flex: 0 0 auto; border: 0; border-radius: 10px; background: transparent; padding: .65rem .8rem; color: #5f6e69; font-weight: 800; }
 .admin-tabs button.active { background: var(--brand); color: #fff; }
@@ -182,6 +183,17 @@ body[data-panel="trainingPanel"] .site-footer { flex: 0 0 auto; padding: .55rem 
 .section-heading p { margin: 0; color: var(--muted); }
 .subcard { display: grid; gap: 1rem; margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--line); border-radius: 16px; background: #fbfcfc; }
 .admin-list { display: grid; gap: .6rem; }
+.training-admin-item { display: grid; gap: .6rem; }
+.training-export-slot:empty { display: none; }
+.training-export-panel { display: grid; gap: 1rem; margin: 0 0 .45rem; border: 1px solid color-mix(in srgb, var(--brand) 35%, var(--line)); border-radius: 16px; padding: 1rem; background: var(--brand-soft); }
+.training-export-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.training-export-heading h4, .training-export-heading p { margin-bottom: 0; }
+.training-export-heading .form-hint { margin-top: .3rem; }
+.training-export-panel .subcard { margin-bottom: 0; background: #fff; }
+.training-export-history h4 { margin-bottom: .65rem; }
+.orphan-export-section { margin-top: 1rem; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+.orphan-export-section summary { cursor: pointer; padding: .9rem 1rem; color: var(--brand-dark); font-weight: 800; }
+.orphan-export-section .admin-list { padding: 0 1rem 1rem; }
 .admin-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .8rem; align-items: center; padding: .85rem; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
 .admin-row.pending-row { border-style: dashed; background: var(--brand-soft); }
 .admin-row-main { min-width: 0; }
@@ -231,6 +243,8 @@ body[data-panel="trainingPanel"] .site-footer { flex: 0 0 auto; padding: .55rem 
   .button-row .button { flex: 1; }
   .admin-row { grid-template-columns: 1fr; }
   .row-actions { justify-content: flex-start; }
+  .training-export-heading { align-items: stretch; flex-direction: column; }
+  .training-export-heading .button { align-self: flex-start; }
   .import-row, .filter-row, .inline-form { align-items: stretch; flex-direction: column; }
   .favicon-setting { grid-template-columns: 1fr 56px; }
   .favicon-preview { width: 56px; height: 56px; }

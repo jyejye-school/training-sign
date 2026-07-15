@@ -8,11 +8,11 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://script.google.com https://script.googleusercontent.com; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'">
   <title>학교 연수 전자서명</title>
   <link id="faviconLink" rel="icon" type="image/svg+xml" href="favicon.svg?v=20260715.2">
-  <link rel="stylesheet" href="assets/styles.css?v=20260715.7">
+  <link rel="stylesheet" href="assets/styles.css?v=20260715.8">
   <script src="assets/config.js"></script>
   <script src="vendor/qrcode.js" defer></script>
   <script src="vendor/xlsx.full.min.js" defer></script>
-  <script type="module" src="assets/app.js?v=20260715.8"></script>
+  <script type="module" src="assets/app.js?v=20260715.9"></script>
 </head>
 <body data-panel="loadingPanel">
   <a class="skip-link" href="#mainContent">본문으로 바로가기</a>
@@ -179,16 +179,13 @@
     <header class="admin-header">
       <div><p class="eyebrow">관리자</p><h2>연수 전자서명 관리</h2></div>
       <div class="header-actions">
-        <button id="adminRefresh" class="button quiet" type="button" title="현재 화면 새로고침">새로고침</button>
-        <button id="adminLogout" class="button quiet" type="button">로그아웃</button>
-        <button id="closeAdmin" class="close-button" type="button" aria-label="닫기">×</button>
+        <button id="closeAdmin" class="button secondary admin-close-button" type="button">닫기</button>
       </div>
     </header>
     <nav id="adminTabs" class="admin-tabs" aria-label="관리 메뉴">
       <button class="active" data-admin-tab="trainings" type="button">연수</button>
       <button data-admin-tab="staff" type="button">구성원</button>
       <button data-admin-tab="records" type="button">서명 기록</button>
-      <button data-admin-tab="exports" type="button">출력·삭제</button>
       <button data-admin-tab="settings" type="button">기관 설정</button>
       <button data-admin-tab="share" type="button">공유·보안</button>
     </nav>
@@ -198,8 +195,33 @@
         <p>관리자 정보를 불러오는 중입니다.</p>
       </div>
       <section class="admin-section active" data-admin-panel="trainings">
-        <div class="section-heading"><div><h3>연수 관리</h3><p>서명 날짜와 가능 시간을 설정합니다.</p></div><button id="newTraining" class="button primary" type="button">새 연수</button></div>
+        <div class="section-heading"><div><h3>연수 관리</h3><p>연수를 설정하고 각 연수에서 서명등록부를 출력합니다.</p></div><button id="newTraining" class="button primary" type="button">새 연수</button></div>
         <div id="trainingAdminList" class="admin-list"></div>
+        <div id="trainingExportPanelHome">
+          <section id="trainingExportPanel" class="training-export-panel hidden" aria-labelledby="trainingExportTitle">
+            <div class="training-export-heading">
+              <div><p class="eyebrow">서명등록부 출력</p><h4 id="trainingExportTitle"></h4><p id="trainingExportDateHint" class="form-hint"></p></div>
+              <button id="collapseTrainingExport" class="button quiet" type="button">접기</button>
+            </div>
+            <form id="exportForm" class="subcard">
+              <div class="form-grid three-column">
+                <label>날짜<input id="exportDate" type="date" required></label>
+                <label>열 수<select id="exportColumns"><option value="1">1열</option><option value="2" selected>2열</option><option value="3">3열</option></select></label>
+                <label>정렬<select id="exportSort"><option value="registration" selected>등록순</option><option value="department">부서순</option><option value="name">이름순</option></select></label>
+                <label>출력 방식<select id="exportOutputType"><option value="pdf" selected>PDF</option><option value="xlsx">엑셀</option><option value="print">인쇄하기</option></select></label>
+                <label class="inline-check"><input id="exportShowRate" type="checkbox" checked> 서명률 표시</label>
+              </div>
+              <p class="form-hint">모바일에서는 용지 크기에 맞춰 축소되어 보이지만, 저장·인쇄 결과는 A4 규격으로 만들어집니다.</p>
+              <button class="button primary" type="submit">미리보기 만들기</button>
+            </form>
+            <div id="exportProgress" class="progress-box hidden"><progress max="100" value="0"></progress><p></p></div>
+            <div class="training-export-history"><h4>이 연수의 출력 내역</h4><div id="exportJobList" class="admin-list"></div></div>
+          </section>
+        </div>
+        <details id="orphanExportSection" class="orphan-export-section hidden">
+          <summary>삭제된 연수의 출력 내역 <span id="orphanExportCount"></span></summary>
+          <div id="orphanExportJobList" class="admin-list"></div>
+        </details>
         <form id="trainingForm" class="subcard hidden">
           <input id="trainingId" type="hidden">
           <div class="form-grid two-column">
@@ -235,24 +257,6 @@
         <div class="section-heading"><div><h3>서명 기록</h3><p>잘못 등록된 기록을 개별 삭제할 수 있습니다.</p></div></div>
         <form id="recordFilterForm" class="filter-row"><select id="recordTraining"></select><input id="recordDate" type="date" required><button class="button primary" type="submit">조회</button></form>
         <div id="recordSummary"></div><div id="recordList" class="admin-list"></div>
-      </section>
-
-      <section class="admin-section" data-admin-panel="exports">
-        <div class="section-heading"><div><h3>출력 및 원본 삭제</h3><p>실제 서명이 포함된 A4 미리보기를 확인한 뒤 PDF, 엑셀 또는 인쇄를 진행합니다.</p></div></div>
-        <form id="exportForm" class="subcard">
-          <div class="form-grid three-column">
-            <label>연수<select id="exportTraining"></select></label>
-            <label>날짜<input id="exportDate" type="date" required></label>
-            <label>열 수<select id="exportColumns"><option value="1">1열</option><option value="2" selected>2열</option><option value="3">3열</option></select></label>
-            <label>정렬<select id="exportSort"><option value="registration" selected>등록순</option><option value="department">부서순</option><option value="name">이름순</option></select></label>
-            <label>출력 방식<select id="exportOutputType"><option value="pdf" selected>PDF</option><option value="xlsx">엑셀</option><option value="print">인쇄하기</option></select></label>
-            <label class="inline-check"><input id="exportShowRate" type="checkbox" checked> 서명률 표시</label>
-          </div>
-          <p class="form-hint">모바일에서는 용지 크기에 맞춰 축소되어 보이지만, 저장·인쇄 결과는 A4 규격으로 만들어집니다.</p>
-          <button class="button primary" type="submit">미리보기 만들기</button>
-        </form>
-        <div id="exportProgress" class="progress-box hidden"><progress max="100" value="0"></progress><p></p></div>
-        <div id="exportJobList" class="admin-list"></div>
       </section>
 
       <section class="admin-section" data-admin-panel="settings">

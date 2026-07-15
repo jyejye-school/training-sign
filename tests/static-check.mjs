@@ -23,7 +23,15 @@ expect(/view:\s*'bootstrap'/.test(app), '관리자 로그인이 빠른 bootstrap
 expect(/setAdminLoginMode\(false\)[\s\S]*showModal\(\)[\s\S]*get_setup_status/.test(app), '관리자 로그인 창이 초기 설정 확인보다 먼저 열리지 않습니다.');
 expect(!/관리자 확인 중|확인 중…/.test(app), '관리자 로그인 버튼에 불필요한 확인 중 대기가 남아 있습니다.');
 expect(/get_admin_section/.test(app + backend) && /function getAdminSection_/.test(backend), '관리자 탭별 지연 로딩 API가 누락되었습니다.');
-expect(/id="adminRefresh"/.test(index) && /refreshActiveAdminSection/.test(app), '관리자 수동 새로고침 기능이 누락되었습니다.');
+expect(!/id="adminRefresh"|id="adminLogout"|refreshActiveAdminSection|logoutAdmin/.test(index + app), '제거하기로 한 관리자 새로고침·로그아웃 UI 또는 코드가 남아 있습니다.');
+expect(/id="closeAdmin"[^>]*>닫기<\//.test(index) && !/id="closeAdmin"[^>]*>×<\//.test(index), '관리자 닫기 버튼이 글자 버튼으로 바뀌지 않았습니다.');
+expect(!/data-admin-tab="exports"|data-admin-panel="exports"/.test(index), '독립 출력·삭제 관리자 탭이 남아 있습니다.');
+expect(/data-action="toggle-export"/.test(app) && /id="trainingExportPanel"/.test(index), '연수별 펼침 출력 기능이 없습니다.');
+expect(/id="orphanExportSection"/.test(index) && /renderOrphanExportJobs/.test(app), '삭제된 연수의 출력 내역 접근 기능이 없습니다.');
+expect(/training_workspace/.test(app + backend) && /trainings:[\s\S]*exports:/.test(backend), '연수·출력 작업 통합 관리자 API가 없습니다.');
+expect(/training\.daily[\s\S]*exportDate[\s\S]*disabled/.test(app), '고정 날짜 연수와 매일 연수의 출력 날짜 처리가 없습니다.');
+expect(/function closeAdminAndLogout\(\)[\s\S]*rpc\('logout'\)[\s\S]*adminSession = ''/.test(app), '관리자 닫기 시 세션 종료 처리가 없습니다.');
+expect(/adminDialog'\)\.addEventListener\('cancel'/.test(app), 'Esc로 관리자 화면을 닫을 때의 로그아웃 처리가 없습니다.');
 expect(/ADMIN_SYNC_MS\s*=\s*30000/.test(app), '관리자 화면의 30초 백그라운드 동기화가 누락되었습니다.');
 expect(!/await\s+refreshAdminData\s*\(/.test(app), '단순 저장 뒤 전체 관리자 데이터를 다시 읽고 있습니다.');
 expect(/pendingTraining/.test(app) && /state\.adminData\.trainings = previousTrainings/.test(app), '연수 저장의 즉시 화면 반영 또는 실패 복구가 누락되었습니다.');
