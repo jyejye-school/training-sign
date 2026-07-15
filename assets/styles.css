@@ -204,6 +204,8 @@ body[data-panel="trainingPanel"] .site-footer { flex: 0 0 auto; padding: .55rem 
 .row-actions button.danger { color: var(--danger); border-color: #edc7c3; }
 .inline-check { display: flex; grid-template-columns: auto 1fr; align-items: center; gap: .45rem; min-height: 44px; }
 .import-row, .filter-row, .inline-form { display: flex; align-items: center; gap: .7rem; margin-bottom: 1rem; }
+#renameDepartmentForm { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) max-content; }
+#renameDepartmentForm .button { min-width: 7.5rem; white-space: nowrap; }
 .file-button { display: inline-flex; place-items: center; min-height: 42px; border: 1px solid #b9ccc6; border-radius: 11px; padding: .65rem .85rem; background: #fff; color: var(--brand-dark); cursor: pointer; }
 .file-button input { display: none; }
 .favicon-setting { display: grid; grid-template-columns: minmax(0, 1fr) 64px; gap: .75rem 1rem; align-items: center; border: 1px solid var(--line); border-radius: 14px; padding: 1rem; background: #f8faf9; }
@@ -246,6 +248,8 @@ body[data-panel="trainingPanel"] .site-footer { flex: 0 0 auto; padding: .55rem 
   .training-export-heading { align-items: stretch; flex-direction: column; }
   .training-export-heading .button { align-self: flex-start; }
   .import-row, .filter-row, .inline-form { align-items: stretch; flex-direction: column; }
+  #renameDepartmentForm { grid-template-columns: 1fr; }
+  #renameDepartmentForm .button { width: 100%; }
   .favicon-setting { grid-template-columns: 1fr 56px; }
   .favicon-preview { width: 56px; height: 56px; }
   .favicon-actions { grid-column: 1 / -1; }
