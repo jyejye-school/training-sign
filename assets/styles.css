@@ -33,6 +33,7 @@ h2, h3 { letter-spacing: -.025em; }
 .hidden { display: none !important; }
 .site-header { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: .85rem; min-height: 76px; padding: .7rem clamp(1rem, 3vw, 2.4rem); border-bottom: 1px solid rgba(49, 92, 84, .13); background: rgba(248, 251, 250, .9); backdrop-filter: blur(16px); }
 .brand-mark { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 15px 15px 15px 4px; background: var(--brand); color: white; font-size: .79rem; font-weight: 900; box-shadow: 0 8px 22px color-mix(in srgb, var(--brand) 25%, transparent); }
+.brand-mark-icon { display: block; width: 32px; height: 32px; }
 .brand-copy { min-width: 0; }
 .school-name { margin: 0; font-weight: 900; letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .school-subtitle { margin: .15rem 0 0; color: var(--muted); font-size: .82rem; }
@@ -170,6 +171,7 @@ h2, h3 { letter-spacing: -.025em; }
 @media (max-width: 720px) {
   .site-header { min-height: 68px; padding-inline: .8rem; }
   .brand-mark { width: 42px; height: 42px; }
+  .brand-mark-icon { width: 28px; height: 28px; }
   .icon-button { padding: .55rem .62rem; font-size: .8rem; }
   .page-shell { width: min(100% - 1rem, 820px); margin-top: 1rem; }
   .card { border-radius: 18px; }
