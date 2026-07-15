@@ -5,7 +5,7 @@
  */
 
 const APP = Object.freeze({
-  VERSION: '1.3.0',
+  VERSION: '1.4.0',
   TIME_ZONE: 'Asia/Seoul',
   DATA_FILE: '학교 연수 전자서명 데이터',
   GUIDE_SHEET: '사용설명서',
@@ -31,7 +31,7 @@ const SHEETS = Object.freeze({
 
 const SETTING_KEYS = Object.freeze([
   'schoolName', 'subtitle', 'notice', 'brandColor',
-  'privacyPurpose', 'privacyItems', 'privacyRetention'
+  'privacyPurpose', 'privacyItems', 'privacyRetention', 'faviconData'
 ]);
 
 const INSTANCE_PROPERTIES = Object.freeze([
@@ -231,7 +231,8 @@ function initializeSystem() {
       brandColor: '#315c54',
       privacyPurpose: '',
       privacyItems: '',
-      privacyRetention: ''
+      privacyRetention: '',
+      faviconData: ''
     });
   }
   ensureCleanupTrigger_();
@@ -507,8 +508,15 @@ function getAdminSection_(section) {
 }
 
 function saveSettings_(input, frontendUrl) {
+  const current = readSettings_();
   const settings = {};
-  SETTING_KEYS.forEach(function(key) { settings[key] = string_(input && input[key], key === 'notice' ? 1000 : 500); });
+  SETTING_KEYS.forEach(function(key) {
+    if (key === 'faviconData') return;
+    settings[key] = string_(input && input[key], key === 'notice' ? 1000 : 500);
+  });
+  settings.faviconData = input && Object.prototype.hasOwnProperty.call(input, 'faviconData')
+    ? validateFaviconData_(input.faviconData)
+    : String(current.faviconData || '');
   if (!privacyReady_(settings)) apiError_('PRIVACY_REQUIRED', '학교명과 개인정보 처리 안내를 모두 입력해 주세요.');
   if (!/^#[0-9a-f]{6}$/i.test(settings.brandColor)) settings.brandColor = '#315c54';
   writeSettings_(settings);
@@ -1279,6 +1287,35 @@ function writeSettings_(settings) {
 function privacyReady_(settings) {
   return ['schoolName', 'subtitle', 'privacyPurpose', 'privacyItems', 'privacyRetention']
     .every(function(key) { return Boolean(String(settings[key] || '').trim()); });
+}
+
+function validateFaviconData_(value) {
+  const data = String(value === undefined || value === null ? '' : value).trim();
+  if (!data) return '';
+  if (data.length > 45000) apiError_('FAVICON_TOO_LARGE', '파비콘 PNG는 32KB 이하여야 합니다.');
+  const match = data.match(/^data:image\/png;base64,([A-Za-z0-9+/]+={0,2})$/);
+  if (!match || match[1].length % 4 !== 0) apiError_('BAD_FAVICON', '64×64 PNG 파비콘만 저장할 수 있습니다.');
+  let bytes;
+  try {
+    bytes = Utilities.base64Decode(match[1]);
+  } catch (error) {
+    apiError_('BAD_FAVICON', '파비콘 PNG 데이터를 읽을 수 없습니다.');
+  }
+  if (!bytes || bytes.length < 33 || bytes.length > 32 * 1024) apiError_('FAVICON_TOO_LARGE', '파비콘 PNG는 32KB 이하여야 합니다.');
+  const expectedSignature = [137, 80, 78, 71, 13, 10, 26, 10];
+  const validSignature = expectedSignature.every(function(byte, index) { return (bytes[index] & 255) === byte; });
+  const hasIhdr = String.fromCharCode(bytes[12] & 255, bytes[13] & 255, bytes[14] & 255, bytes[15] & 255) === 'IHDR';
+  if (!validSignature || !hasIhdr || pngUint32_(bytes, 16) !== 64 || pngUint32_(bytes, 20) !== 64) {
+    apiError_('BAD_FAVICON', '파비콘은 가로·세로 64픽셀 PNG여야 합니다.');
+  }
+  return 'data:image/png;base64,' + match[1];
+}
+
+function pngUint32_(bytes, offset) {
+  return (((bytes[offset] & 255) * 0x1000000)
+    + ((bytes[offset + 1] & 255) << 16)
+    + ((bytes[offset + 2] & 255) << 8)
+    + (bytes[offset + 3] & 255)) >>> 0;
 }
 
 function publicStaff_(row) {

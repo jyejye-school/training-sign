@@ -78,9 +78,16 @@ export function normalizeRosterRows(rows = []) {
   return normalized;
 }
 
+export function normalizeNameEntryText(value) {
+  return String(value || '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[\t ,;]+/g, '\n')
+    .replace(/\n{2,}/g, '\n');
+}
+
 export function splitNames(value) {
-  return [...new Set(String(value || '')
-    .split(/[\n,;]/)
+  return [...new Set(normalizeNameEntryText(value)
+    .split('\n')
     .map(name => name.trim())
     .filter(Boolean))]
     .slice(0, 200);

@@ -7,6 +7,7 @@ import {
   isPrivacyReady,
   isValidAdminPassword,
   localDuplicateKey,
+  normalizeNameEntryText,
   normalizeRosterRows,
   parseShareToken,
   safeFileName,
@@ -88,7 +89,9 @@ test('연수 날짜와 시각을 검증한다', () => {
 });
 
 test('이름 나누기와 파일명 안전화', () => {
-  assert.deepEqual(splitNames('김하늘, 박서준\n김하늘'), ['김하늘', '박서준']);
+  assert.equal(normalizeNameEntryText('홍길동 홍수박'), '홍길동\n홍수박');
+  assert.equal(normalizeNameEntryText('홍길동\t홍수박,김하늘;박서준\r\n최지우'), '홍길동\n홍수박\n김하늘\n박서준\n최지우');
+  assert.deepEqual(splitNames('김하늘, 박서준\n\n김하늘  홍수박'), ['김하늘', '박서준', '홍수박']);
   assert.equal(safeFileName('2026/연수:*?'), '2026_연수_');
   assert.equal(localDuplicateKey('t1', 's1', '2026-07-14'), 'training-sign:t1:s1:2026-07-14');
 });

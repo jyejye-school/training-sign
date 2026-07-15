@@ -7,12 +7,12 @@
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://script.google.com https://script.googleusercontent.com; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'">
   <title>학교 연수 전자서명</title>
-  <link rel="icon" type="image/svg+xml" href="favicon.svg?v=20260715.2">
-  <link rel="stylesheet" href="assets/styles.css?v=20260715.6">
+  <link id="faviconLink" rel="icon" type="image/svg+xml" href="favicon.svg?v=20260715.2">
+  <link rel="stylesheet" href="assets/styles.css?v=20260715.7">
   <script src="assets/config.js"></script>
   <script src="vendor/qrcode.js" defer></script>
   <script src="vendor/xlsx.full.min.js" defer></script>
-  <script type="module" src="assets/app.js?v=20260715.7"></script>
+  <script type="module" src="assets/app.js?v=20260715.8"></script>
 </head>
 <body data-panel="loadingPanel">
   <a class="skip-link" href="#mainContent">본문으로 바로가기</a>
@@ -218,7 +218,7 @@
       <section class="admin-section" data-admin-panel="staff">
         <div class="section-heading"><div><h3>구성원 관리</h3><p>부서와 성명을 등록합니다.</p></div><button id="downloadRosterTemplate" class="button secondary" type="button">엑셀 양식</button></div>
         <form id="staffAddForm" class="subcard">
-          <div class="form-grid two-column"><label>부서<input id="staffDepartment" maxlength="50" required></label><label>성명 또는 여러 명<input id="staffNames" maxlength="2000" placeholder="쉼표 또는 줄바꿈으로 구분" required></label></div>
+          <div class="form-grid two-column"><label>부서<input id="staffDepartment" maxlength="50" required></label><label>성명 또는 여러 명<textarea id="staffNames" rows="4" maxlength="2000" placeholder="띄어쓰기·쉼표·줄바꿈으로 여러 명 구분" required></textarea></label></div>
           <button class="button primary" type="submit">구성원 추가</button>
         </form>
         <div class="import-row">
@@ -263,6 +263,18 @@
             <label>부제목<input id="settingsSubtitle" maxlength="100" required></label>
             <label class="span-two">상단 안내문<textarea id="settingsNotice" maxlength="1000"></textarea></label>
             <label>대표 색상<input id="settingsBrandColor" type="color" value="#315c54"></label>
+            <div class="span-two favicon-setting" role="group" aria-labelledby="settingsFaviconLabel">
+              <div>
+                <p id="settingsFaviconLabel" class="field-label">브라우저 파비콘</p>
+                <p class="form-hint">PNG·JPG·WebP, 최대 2MB · 브라우저 탭에만 표시됩니다.</p>
+              </div>
+              <img id="settingsFaviconPreview" class="favicon-preview" src="favicon.svg?v=20260715.2" alt="현재 파비콘 미리보기">
+              <div class="favicon-actions">
+                <label class="file-button">파비콘 이미지 선택<input id="settingsFaviconFile" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp"></label>
+                <button id="resetFavicon" class="button secondary" type="button">기본 아이콘으로 되돌리기</button>
+              </div>
+              <p id="settingsFaviconStatus" class="form-hint" aria-live="polite"></p>
+            </div>
             <label class="span-two">수집 목적<textarea id="settingsPrivacyPurpose" maxlength="500" required></textarea></label>
             <label class="span-two">수집 항목<textarea id="settingsPrivacyItems" maxlength="500" required></textarea></label>
             <label class="span-two">보관기간·삭제 방법<textarea id="settingsPrivacyRetention" maxlength="500" required></textarea></label>

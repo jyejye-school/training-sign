@@ -6,13 +6,14 @@ import {
   isPrivacyReady,
   isValidAdminPassword,
   localDuplicateKey,
+  normalizeNameEntryText,
   normalizeRosterRows,
   parseShareToken,
   splitNames,
   todaySeoul,
   trainingTimeLabel,
   validateTraining
-} from './core.js?v=20260715.1';
+} from './core.js?v=20260715.2';
 
 const $ = id => document.getElementById(id);
 const config = window.TRAINING_SIGN_CONFIG || {};
@@ -22,6 +23,9 @@ const shareToken = DEMO ? 'DEMO_TOKEN_1234567890123456' : parseShareToken(locati
 const baseUrl = `${location.origin}${location.pathname}`;
 const EXPORT_SETTINGS_KEY = 'training-sign:export-settings';
 const ADMIN_SYNC_MS = 30000;
+const DEFAULT_FAVICON_URL = 'favicon.svg?v=20260715.2';
+const FAVICON_MAX_SOURCE_BYTES = 2 * 1024 * 1024;
+const FAVICON_MAX_PNG_BYTES = 32 * 1024;
 const ADMIN_SECTION_FOR_TAB = Object.freeze({
   trainings: 'trainings',
   staff: 'staff',
@@ -46,7 +50,9 @@ const state = {
   adminLoadedAt: {},
   adminSectionPromises: {},
   adminSyncTimer: null,
-  adminAuthenticating: false
+  adminAuthenticating: false,
+  settingsFaviconData: '',
+  staffNamesComposing: false
 };
 
 const demoData = {
@@ -247,6 +253,10 @@ function applySettings(settings) {
   document.title = `${settings.schoolName || '학교'} 연수 전자서명`;
   $('noticeText').textContent = settings.notice || '';
   setHidden($('noticePanel'), !settings.notice);
+  const favicon = String(settings.faviconData || '');
+  const faviconLink = $('faviconLink');
+  faviconLink.type = favicon ? 'image/png' : 'image/svg+xml';
+  faviconLink.href = favicon || DEFAULT_FAVICON_URL;
 }
 
 function showPanel(panelId) {
@@ -855,6 +865,19 @@ function renderStaffAdmin() {
     ${groups.get(department).map(person => `<div class="admin-row" data-staff-id="${escapeHtml(person.id)}"><div class="admin-row-main"><strong>${escapeHtml(person.name)}</strong></div><div class="row-actions"><button data-action="edit-staff">수정</button><button data-action="delete-staff" class="danger">삭제</button></div></div>`).join('')}</div>`).join('') : '<div class="empty-state">등록된 구성원이 없습니다.</div>';
 }
 
+function normalizeStaffNamesField() {
+  const input = $('staffNames');
+  const value = input.value;
+  const start = input.selectionStart ?? value.length;
+  const end = input.selectionEnd ?? start;
+  const normalized = normalizeNameEntryText(value);
+  if (normalized === value) return;
+  const nextStart = normalizeNameEntryText(value.slice(0, start)).length;
+  const nextEnd = normalizeNameEntryText(value.slice(0, end)).length;
+  input.value = normalized;
+  input.setSelectionRange(nextStart, nextEnd);
+}
+
 async function addStaff(event) {
   event.preventDefault();
   const department = $('staffDepartment').value.trim();
@@ -967,6 +990,73 @@ function fillSettingsForm() {
   $('settingsPrivacyPurpose').value = settings.privacyPurpose || '';
   $('settingsPrivacyItems').value = settings.privacyItems || '';
   $('settingsPrivacyRetention').value = settings.privacyRetention || '';
+  state.settingsFaviconData = String(settings.faviconData || '');
+  renderFaviconSetting();
+}
+
+function renderFaviconSetting(message = '') {
+  const favicon = state.settingsFaviconData;
+  $('settingsFaviconPreview').src = favicon || DEFAULT_FAVICON_URL;
+  $('settingsFaviconStatus').textContent = message || (favicon ? '사용자 지정 아이콘이 선택되어 있습니다.' : '현재 파란색 기본 아이콘을 사용합니다.');
+}
+
+function loadImageFromFile(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('이미지 파일을 읽을 수 없습니다. 손상되지 않은 파일인지 확인해 주세요.'));
+    };
+    image.src = url;
+  });
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('파비콘 이미지를 변환하지 못했습니다.'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function convertFaviconFile(file) {
+  const allowedTypes = new Set(['image/png', 'image/jpeg', 'image/webp']);
+  if (!allowedTypes.has(String(file?.type || '').toLowerCase())) throw new Error('PNG·JPG·WebP 이미지만 선택할 수 있습니다.');
+  if (!file.size || file.size > FAVICON_MAX_SOURCE_BYTES) throw new Error('파비콘 이미지는 2MB 이하여야 합니다.');
+  const image = await loadImageFromFile(file);
+  if (!image.naturalWidth || !image.naturalHeight) throw new Error('이미지 크기를 확인할 수 없습니다.');
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 64;
+  const context = canvas.getContext('2d');
+  context.clearRect(0, 0, 64, 64);
+  const scale = Math.min(64 / image.naturalWidth, 64 / image.naturalHeight);
+  const width = Math.max(1, Math.round(image.naturalWidth * scale));
+  const height = Math.max(1, Math.round(image.naturalHeight * scale));
+  context.drawImage(image, Math.round((64 - width) / 2), Math.round((64 - height) / 2), width, height);
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+  if (!blob || blob.size > FAVICON_MAX_PNG_BYTES) throw new Error('변환된 파비콘이 32KB를 넘습니다. 더 단순한 이미지를 선택해 주세요.');
+  return blobToDataUrl(blob);
+}
+
+async function handleFaviconFile(event) {
+  const input = event.currentTarget;
+  const file = input.files?.[0];
+  if (!file) return;
+  try {
+    state.settingsFaviconData = await convertFaviconFile(file);
+    renderFaviconSetting('64×64 PNG로 맞췄습니다. 설정 저장을 눌러 적용하세요.');
+  } catch (error) {
+    showToast(error.message, 4200);
+  } finally {
+    input.value = '';
+  }
 }
 
 async function saveSettings(event) {
@@ -978,7 +1068,8 @@ async function saveSettings(event) {
     brandColor: $('settingsBrandColor').value,
     privacyPurpose: $('settingsPrivacyPurpose').value.trim(),
     privacyItems: $('settingsPrivacyItems').value.trim(),
-    privacyRetention: $('settingsPrivacyRetention').value.trim()
+    privacyRetention: $('settingsPrivacyRetention').value.trim(),
+    faviconData: state.settingsFaviconData
   };
   if (!isPrivacyReady(settings)) return showToast('개인정보 안내 항목을 모두 입력해 주세요.');
   try {
@@ -1425,11 +1516,19 @@ function bindEvents() {
   $('cancelTraining').addEventListener('click', () => setHidden($('trainingForm'), true));
   $('trainingForm').addEventListener('submit', saveTraining);
   $('trainingAdminList').addEventListener('click', handleTrainingListClick);
+  $('staffNames').addEventListener('compositionstart', () => { state.staffNamesComposing = true; });
+  $('staffNames').addEventListener('compositionend', () => { state.staffNamesComposing = false; normalizeStaffNamesField(); });
+  $('staffNames').addEventListener('input', event => { if (!state.staffNamesComposing && !event.isComposing) normalizeStaffNamesField(); });
   $('staffAddForm').addEventListener('submit', addStaff);
   $('staffAdminList').addEventListener('click', handleStaffListClick);
   $('renameDepartmentForm').addEventListener('submit', renameDepartment);
   $('downloadRosterTemplate').addEventListener('click', downloadRosterTemplate);
   $('rosterFile').addEventListener('change', importRosterFile);
+  $('settingsFaviconFile').addEventListener('change', handleFaviconFile);
+  $('resetFavicon').addEventListener('click', () => {
+    state.settingsFaviconData = '';
+    renderFaviconSetting('기본 아이콘으로 되돌렸습니다. 설정 저장을 눌러 적용하세요.');
+  });
   $('settingsForm').addEventListener('submit', saveSettings);
   $('recordFilterForm').addEventListener('submit', loadRecords);
   $('recordList').addEventListener('click', handleRecordClick);

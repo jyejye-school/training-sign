@@ -194,6 +194,11 @@ body[data-panel="trainingPanel"] .site-footer { flex: 0 0 auto; padding: .55rem 
 .import-row, .filter-row, .inline-form { display: flex; align-items: center; gap: .7rem; margin-bottom: 1rem; }
 .file-button { display: inline-flex; place-items: center; min-height: 42px; border: 1px solid #b9ccc6; border-radius: 11px; padding: .65rem .85rem; background: #fff; color: var(--brand-dark); cursor: pointer; }
 .file-button input { display: none; }
+.favicon-setting { display: grid; grid-template-columns: minmax(0, 1fr) 64px; gap: .75rem 1rem; align-items: center; border: 1px solid var(--line); border-radius: 14px; padding: 1rem; background: #f8faf9; }
+.field-label { margin: 0 0 .35rem; color: #3d4a46; font-size: .92rem; font-weight: 700; }
+.favicon-preview { grid-column: 2; grid-row: 1 / span 2; width: 64px; height: 64px; object-fit: contain; border: 1px solid var(--line); border-radius: 13px; padding: 6px; background: #fff; image-rendering: auto; }
+.favicon-actions { display: flex; flex-wrap: wrap; gap: .55rem; }
+#settingsFaviconStatus { min-height: 1.25rem; margin: 0; }
 .progress-box { margin: 1rem 0; padding: 1rem; border-radius: 14px; background: var(--brand-soft); }
 .progress-box progress { width: 100%; accent-color: var(--brand); }
 .share-admin-card { max-width: 560px; }
@@ -227,6 +232,9 @@ body[data-panel="trainingPanel"] .site-footer { flex: 0 0 auto; padding: .55rem 
   .admin-row { grid-template-columns: 1fr; }
   .row-actions { justify-content: flex-start; }
   .import-row, .filter-row, .inline-form { align-items: stretch; flex-direction: column; }
+  .favicon-setting { grid-template-columns: 1fr 56px; }
+  .favicon-preview { width: 56px; height: 56px; }
+  .favicon-actions { grid-column: 1 / -1; }
   .detail-list { grid-template-columns: 1fr; gap: .25rem; }
   .detail-list dd { margin-bottom: .7rem; }
   .export-preview-dialog { width: 100vw; height: 100vh; max-height: 100vh; border-radius: 0; }
