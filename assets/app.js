@@ -790,9 +790,11 @@ async function saveTraining(event) {
     renderAdminSection('trainings');
     showToast('연수를 저장했습니다.');
   } catch (error) {
-    state.adminData.trainings = previousTrainings;
-    renderAdminSection('trainings');
-    openTrainingForm(existing || training);
+    if (state.adminData) {
+      state.adminData.trainings = previousTrainings;
+      renderAdminSection('trainings');
+      openTrainingForm(existing || training);
+    }
     showToast(error.message, 4200);
   }
 }
@@ -833,8 +835,10 @@ async function handleTrainingListClick(event) {
     markAdminSectionLoaded('trainings');
     renderAdminSection('trainings');
   } catch (error) {
-    state.adminData.trainings = previousTrainings;
-    renderAdminSection('trainings');
+    if (state.adminData) {
+      state.adminData.trainings = previousTrainings;
+      renderAdminSection('trainings');
+    }
     showToast(error.message, 4200);
   }
 }
