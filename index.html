@@ -7,11 +7,11 @@
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://script.google.com https://script.googleusercontent.com; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'">
   <title>학교 연수 전자서명</title>
-  <link rel="stylesheet" href="assets/styles.css?v=20260714.4">
+  <link rel="stylesheet" href="assets/styles.css?v=20260715.1">
   <script src="assets/config.js"></script>
   <script src="vendor/qrcode.js" defer></script>
   <script src="vendor/xlsx.full.min.js" defer></script>
-  <script type="module" src="assets/app.js?v=20260714.4"></script>
+  <script type="module" src="assets/app.js?v=20260715.1"></script>
 </head>
 <body>
   <a class="skip-link" href="#mainContent">본문으로 바로가기</a>
@@ -48,8 +48,8 @@
 
     <section id="invalidPanel" class="card centered hidden">
       <div class="empty-icon" aria-hidden="true">!</div>
-      <h1>올바른 공유 링크가 아닙니다</h1>
-      <p id="invalidMessage">담당자에게 새 링크나 QR을 받아 주세요.</p>
+      <h1>서명 화면을 열 수 없습니다</h1>
+      <p id="invalidMessage">공유받은 링크나 QR을 다시 확인해 주세요.</p>
     </section>
 
     <section id="trainingPanel" class="card hidden" aria-labelledby="trainingHeading">
@@ -57,7 +57,12 @@
       <h1 id="trainingHeading">어떤 연수에 참여하셨나요?</h1>
       <p class="helper">오늘 서명할 수 있는 연수를 선택해 주세요.</p>
       <div id="trainingList" class="choice-grid"></div>
-      <div id="noTraining" class="empty-state hidden">현재 서명할 수 있는 연수가 없습니다.</div>
+      <div id="noTraining" class="empty-state empty-training hidden">
+        <div class="empty-training-icon" aria-hidden="true">—</div>
+        <strong>오늘 참여할 수 있는 연수가 없습니다</strong>
+        <p>연수 날짜와 운영 시간을 확인해 주세요.</p>
+        <small>관리자는 오른쪽 위 <b>관리자</b>에서 연수의 날짜·시간·활성 상태를 확인할 수 있습니다.</small>
+      </div>
     </section>
 
     <section id="personPanel" class="card hidden" aria-labelledby="personHeading">

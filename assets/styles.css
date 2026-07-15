@@ -83,6 +83,13 @@ h2, h3 { letter-spacing: -.025em; }
 .check-row input, .inline-check input { width: 18px; min-height: 18px; margin-top: .08rem; accent-color: var(--brand); }
 .privacy-link { padding-left: 1.8rem; font-size: .82rem; }
 .empty-state { margin-top: 1.2rem; padding: 2.5rem 1rem; border-radius: 16px; background: #f5f7f6; color: var(--muted); text-align: center; }
+.empty-training { display: grid; justify-items: center; gap: .45rem; border: 1px dashed rgba(49, 92, 84, .2); }
+.empty-training.hidden { display: none; }
+.empty-training-icon { display: grid; place-items: center; width: 48px; height: 48px; margin-bottom: .25rem; border-radius: 16px; background: var(--brand-soft); color: var(--brand); font-size: 1.35rem; font-weight: 900; }
+.empty-training strong { color: var(--ink); font-size: 1.05rem; }
+.empty-training p { margin: 0; }
+.empty-training small { max-width: 34rem; margin-top: .35rem; line-height: 1.65; }
+.empty-training b { color: var(--brand-dark); }
 .empty-icon, .success-icon { display: grid; place-items: center; width: 64px; height: 64px; margin: 0 auto 1rem; border-radius: 22px; font-size: 2rem; font-weight: 900; }
 .empty-icon { background: #fff0ee; color: var(--danger); }
 .success-icon { background: var(--brand-soft); color: var(--brand); }
