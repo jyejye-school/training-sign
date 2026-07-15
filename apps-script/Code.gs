@@ -5,7 +5,7 @@
  */
 
 const APP = Object.freeze({
-  VERSION: '1.5.0',
+  VERSION: '1.5.1',
   TIME_ZONE: 'Asia/Seoul',
   DATA_FILE: '학교 연수 전자서명 데이터',
   GUIDE_SHEET: '사용설명서',
@@ -470,14 +470,17 @@ function getAdminData_() {
 
 function getAdminBootstrap_() {
   requireInitialized_();
+  const properties = PropertiesService.getScriptProperties();
+  const shareToken = properties.getProperty('SHARE_TOKEN') || '';
+  const frontendUrl = properties.getProperty('FRONTEND_URL') || '';
   return {
     settings: readSettings_(),
     trainings: readRows_(SHEETS.TRAININGS).sort(orderSort_).map(publicTraining_),
     staff: [],
     exports: [],
-    shareToken: '',
-    shareUrl: '',
-    loadedSections: ['settings', 'trainings']
+    shareToken: shareToken,
+    shareUrl: buildShareUrl_(frontendUrl, shareToken),
+    loadedSections: ['settings', 'trainings', 'share']
   };
 }
 

@@ -19,7 +19,7 @@ const $ = id => document.getElementById(id);
 const config = window.TRAINING_SIGN_CONFIG || {};
 const DEMO = new URLSearchParams(location.search).get('demo') === '1';
 const API_URL = String(config.API_URL || '');
-const shareToken = DEMO ? 'DEMO_TOKEN_1234567890123456' : parseShareToken(location.hash);
+let shareToken = DEMO ? 'DEMO_TOKEN_1234567890123456' : parseShareToken(location.hash);
 const baseUrl = `${location.origin}${location.pathname}`;
 const EXPORT_SETTINGS_KEY = 'training-sign:export-settings';
 const ADMIN_SYNC_MS = 30000;
@@ -205,7 +205,7 @@ function demoRpc(action, payload) {
   if (action === 'admin_login') {
     if (payload.password !== 'demo-admin') return Promise.reject(Object.assign(new Error('데모 비밀번호는 demo-admin입니다.'), { code: 'BAD_PASSWORD' }));
     const adminData = payload.view === 'bootstrap'
-      ? { settings: state.demoAdminData.settings, trainings: state.demoAdminData.trainings, staff: [], exports: [], shareToken: '', shareUrl: '', loadedSections: ['settings', 'trainings'] }
+      ? { settings: state.demoAdminData.settings, trainings: state.demoAdminData.trainings, staff: [], exports: [], shareToken: state.demoAdminData.shareToken, shareUrl: state.demoAdminData.shareUrl, loadedSections: ['settings', 'trainings', 'share'] }
       : state.demoAdminData;
     return Promise.resolve({ sessionToken: 'demo-session', expiresIn: 1800, adminData });
   }
@@ -1520,6 +1520,7 @@ function renderAdmin() {
 
 function closeAdminAndLogout() {
   closeExportPreview();
+  const currentShareToken = state.adminData?.shareToken || shareToken;
   const logoutRequest = state.adminSession ? rpc('logout') : Promise.resolve();
   clearInterval(state.adminSyncTimer);
   state.adminSession = '';
@@ -1530,6 +1531,11 @@ function closeAdminAndLogout() {
   state.records = [];
   if ($('adminDialog').open) $('adminDialog').close();
   logoutRequest.catch(() => { /* 이미 만료된 서버 세션은 별도 안내가 필요하지 않습니다. */ });
+  if (currentShareToken) {
+    shareToken = currentShareToken;
+    history.replaceState(null, '', buildShareUrl(baseUrl, shareToken));
+    initializePublicApp();
+  }
 }
 
 async function initializePublicApp() {
@@ -1538,6 +1544,7 @@ async function initializePublicApp() {
     showPanel('invalidPanel');
     return;
   }
+  showPanel('loadingPanel');
   try {
     state.publicData = await rpc('get_public_data', { shareToken }, { admin: false });
     if (!state.publicData.privacyReady) throw Object.assign(new Error('관리자가 개인정보 처리 안내를 완료하지 않았습니다.'), { code: 'PRIVACY_NOT_READY' });
