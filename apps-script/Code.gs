@@ -5,7 +5,7 @@
  */
 
 const APP = Object.freeze({
-  VERSION: '1.2.1',
+  VERSION: '1.3.0',
   TIME_ZONE: 'Asia/Seoul',
   DATA_FILE: '학교 연수 전자서명 데이터',
   GUIDE_SHEET: '사용설명서',
@@ -38,6 +38,17 @@ const INSTANCE_PROPERTIES = Object.freeze([
   'SPREADSHEET_ID', 'INSTANCE_ID', 'ROOT_FOLDER_ID', 'SIGNATURE_FOLDER_ID', 'EXPORT_FOLDER_ID',
   'SHARE_TOKEN', 'SETUP_CODE', 'ADMIN_PEPPER', 'ADMIN_EPOCH', 'ADMIN_SALT', 'ADMIN_HASH', 'FRONTEND_URL'
 ]);
+
+let REQUEST_CONTEXT_ = null;
+
+function resetRequestContext_() {
+  REQUEST_CONTEXT_ = { spreadsheet: null, sheets: {}, rows: {} };
+}
+
+function requestContext_() {
+  if (!REQUEST_CONTEXT_) resetRequestContext_();
+  return REQUEST_CONTEXT_;
+}
 
 /** 시트를 열 때 관리용 메뉴를 표시합니다. */
 function onOpen() {
@@ -115,10 +126,12 @@ function rebuildGuideSheetFromMenu() {
 }
 
 function doGet() {
+  resetRequestContext_();
   return jsonOutput_({ ok: true, data: { service: '학교 연수 전자서명 API', version: APP.VERSION } });
 }
 
 function doPost(event) {
+  resetRequestContext_();
   try {
     if (!event || !event.postData || !event.postData.contents) apiError_('BAD_REQUEST', '요청 본문이 없습니다.');
     const request = JSON.parse(event.postData.contents);
@@ -142,25 +155,26 @@ function dispatch_(request) {
   if (!action) apiError_('BAD_REQUEST', '작업 이름이 없습니다.');
   if (action === 'get_setup_status') return getSetupStatus_();
   if (action === 'complete_setup') return completeSetup_(request);
-  if (action === 'admin_login') return adminLogin_(request.password);
+  if (action === 'admin_login') return adminLogin_(request.password, request.view);
   if (action === 'get_public_data') return getPublicData_(request.shareToken);
   if (action === 'submit_signature') return submitSignature_(request);
 
   const sessionToken = requireAdminSession_(request.sessionToken);
   if (action === 'logout') return logout_(sessionToken);
   if (action === 'get_admin_data') return getAdminData_();
-  if (action === 'save_settings') return saveSettings_(request.settings, request.frontendUrl);
-  if (action === 'save_training') return saveTraining_(request.training);
-  if (action === 'delete_training') return deleteTraining_(request.trainingId);
-  if (action === 'move_training') return moveTraining_(request.trainingId, request.direction);
-  if (action === 'save_staff_batch') return saveStaffBatch_(request.people);
-  if (action === 'update_staff') return updateStaff_(request.person);
-  if (action === 'delete_staff') return deleteStaff_(request.staffId);
-  if (action === 'rename_department') return renameDepartment_(request.oldDepartment, request.newDepartment);
+  if (action === 'get_admin_section') return getAdminSection_(request.section);
+  if (action === 'save_settings') return withAdminMutationLock_(function() { return saveSettings_(request.settings, request.frontendUrl); });
+  if (action === 'save_training') return withAdminMutationLock_(function() { return saveTraining_(request.training); });
+  if (action === 'delete_training') return withAdminMutationLock_(function() { return deleteTraining_(request.trainingId); });
+  if (action === 'move_training') return withAdminMutationLock_(function() { return moveTraining_(request.trainingId, request.direction); });
+  if (action === 'save_staff_batch') return withAdminMutationLock_(function() { return saveStaffBatch_(request.people); });
+  if (action === 'update_staff') return withAdminMutationLock_(function() { return updateStaff_(request.person); });
+  if (action === 'delete_staff') return withAdminMutationLock_(function() { return deleteStaff_(request.staffId); });
+  if (action === 'rename_department') return withAdminMutationLock_(function() { return renameDepartment_(request.oldDepartment, request.newDepartment); });
   if (action === 'list_records') return listRecords_(request.trainingId, request.date);
-  if (action === 'delete_record') return deleteRecord_(request.recordId);
-  if (action === 'rotate_share_token') return rotateShareToken_(request.frontendUrl);
-  if (action === 'change_password') return changePassword_(request.currentPassword, request.newPassword);
+  if (action === 'delete_record') return withAdminMutationLock_(function() { return deleteRecord_(request.recordId); });
+  if (action === 'rotate_share_token') return withAdminMutationLock_(function() { return rotateShareToken_(request.frontendUrl); });
+  if (action === 'change_password') return withAdminMutationLock_(function() { return changePassword_(request.currentPassword, request.newPassword); });
   if (action === 'start_export') return startExport_(request);
   if (action === 'continue_export') return continueExport_(request.jobId);
   if (action === 'finalize_export') return finalizeExport_(request.jobId);
@@ -251,10 +265,10 @@ function completeSetup_(request) {
   });
   properties.deleteProperty('SETUP_CODE');
   audit_('complete_setup', 'admin', 1, '관리자 비밀번호 최초 설정');
-  return createAdminLoginResult_();
+  return createAdminLoginResult_(request.view);
 }
 
-function adminLogin_(password) {
+function adminLogin_(password, view) {
   requireInitialized_();
   const properties = PropertiesService.getScriptProperties();
   if (!properties.getProperty('ADMIN_HASH')) apiError_('SETUP_REQUIRED', '관리자 첫 설정이 필요합니다.');
@@ -270,16 +284,29 @@ function adminLogin_(password) {
   }
   cache.remove('admin-login-failures');
   cache.remove('admin-login-locked-until');
-  cleanupStaleExportJobs();
   audit_('admin_login', 'admin', 1, '관리자 로그인');
-  return createAdminLoginResult_();
+  return createAdminLoginResult_(view);
 }
 
-function createAdminLoginResult_() {
+function createAdminLoginResult_(view) {
   const token = randomToken_(32);
   const epoch = PropertiesService.getScriptProperties().getProperty('ADMIN_EPOCH') || '1';
   CacheService.getScriptCache().put('admin-session:' + token, epoch, APP.SESSION_SECONDS);
-  return { sessionToken: token, expiresIn: APP.SESSION_SECONDS, adminData: getAdminData_() };
+  return {
+    sessionToken: token,
+    expiresIn: APP.SESSION_SECONDS,
+    adminData: view === 'bootstrap' ? getAdminBootstrap_() : getAdminData_()
+  };
+}
+
+function withAdminMutationLock_(callback) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(30000);
+    return callback();
+  } finally {
+    try { lock.releaseLock(); } catch (ignore) { /* Lock may not have been acquired. */ }
+  }
 }
 
 function requireAdminSession_(token) {
@@ -387,6 +414,9 @@ function submitSignature_(request) {
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(20000);
+    invalidateRows_(SHEETS.TRAININGS);
+    invalidateRows_(SHEETS.STAFF);
+    invalidateRows_(SHEETS.SIGNATURES);
     const freshTraining = findRow_(SHEETS.TRAININGS, 'id', trainingId);
     const freshPerson = findRow_(SHEETS.STAFF, 'id', staffId);
     validateSigningWindow_(freshTraining, freshPerson);
@@ -421,7 +451,6 @@ function validateSigningWindow_(training, person) {
 
 function getAdminData_() {
   requireInitialized_();
-  cleanupStaleExportJobs();
   const properties = PropertiesService.getScriptProperties();
   const shareToken = properties.getProperty('SHARE_TOKEN') || '';
   const frontendUrl = properties.getProperty('FRONTEND_URL') || '';
@@ -436,6 +465,45 @@ function getAdminData_() {
     shareToken: shareToken, shareUrl: buildShareUrl_(frontendUrl, shareToken),
     stats: { staff: staff.length, trainings: trainings.length, signatures: signatures.length }
   };
+}
+
+function getAdminBootstrap_() {
+  requireInitialized_();
+  return {
+    settings: readSettings_(),
+    trainings: readRows_(SHEETS.TRAININGS).sort(orderSort_).map(publicTraining_),
+    staff: [],
+    exports: [],
+    shareToken: '',
+    shareUrl: '',
+    loadedSections: ['settings', 'trainings']
+  };
+}
+
+function getAdminSection_(section) {
+  const name = string_(section, 30);
+  if (['staff', 'exports', 'settings', 'share', 'trainings'].indexOf(name) < 0) {
+    apiError_('VALIDATION', '불러올 관리자 화면이 올바르지 않습니다.');
+  }
+  if (name === 'staff') {
+    return { section: name, staff: readRows_(SHEETS.STAFF).sort(staffSort_).map(publicStaff_) };
+  }
+  if (name === 'exports') {
+    return {
+      section: name,
+      exports: readRows_(SHEETS.EXPORTS)
+        .sort(function(a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); })
+        .map(publicJob_)
+    };
+  }
+  if (name === 'settings') return { section: name, settings: readSettings_() };
+  if (name === 'trainings') {
+    return { section: name, trainings: readRows_(SHEETS.TRAININGS).sort(orderSort_).map(publicTraining_) };
+  }
+  const properties = PropertiesService.getScriptProperties();
+  const shareToken = properties.getProperty('SHARE_TOKEN') || '';
+  const frontendUrl = properties.getProperty('FRONTEND_URL') || '';
+  return { section: name, shareToken: shareToken, shareUrl: buildShareUrl_(frontendUrl, shareToken) };
 }
 
 function saveSettings_(input, frontendUrl) {
@@ -456,18 +524,20 @@ function saveTraining_(input) {
   const rows = readRowsWithNumbers_(SHEETS.TRAININGS);
   const existing = training.id ? rows.find(function(item) { return item.data.id === training.id; }) : null;
   const now = new Date().toISOString();
+  let stored;
   if (existing) {
-    const updated = Object.assign({}, existing.data, training, { updatedAt: now });
-    writeObjectRow_(sheet, SHEETS.TRAININGS.headers, existing.rowNumber, updated);
+    stored = Object.assign({}, existing.data, training, { updatedAt: now });
+    writeObjectRow_(sheet, SHEETS.TRAININGS.headers, existing.rowNumber, stored, SHEETS.TRAININGS);
   } else {
     training.id = Utilities.getUuid();
     training.sortOrder = rows.length ? Math.max.apply(null, rows.map(function(item) { return number_(item.data.sortOrder); })) + 1 : 1;
     training.createdAt = now;
     training.updatedAt = now;
     appendObject_(SHEETS.TRAININGS, training);
+    stored = training;
   }
-  audit_('save_training', training.id, 1, training.title);
-  return { training: publicTraining_(training) };
+  audit_('save_training', stored.id, 1, stored.title);
+  return { training: publicTraining_(stored) };
 }
 
 function normalizeTraining_(input) {
@@ -488,7 +558,7 @@ function deleteTraining_(trainingId) {
   const id = id_(trainingId, '연수');
   deleteRowById_(SHEETS.TRAININGS, id);
   audit_('delete_training', id, 1, '서명 기록은 유지');
-  return { deleted: true };
+  return { deleted: true, deletedId: id };
 }
 
 function moveTraining_(trainingId, direction) {
@@ -498,14 +568,20 @@ function moveTraining_(trainingId, direction) {
   const index = rows.findIndex(function(item) { return item.data.id === id; });
   const target = direction === 'up' ? index - 1 : index + 1;
   if (index < 0) apiError_('NOT_FOUND', '연수를 찾을 수 없습니다.');
-  if (target < 0 || target >= rows.length) return { moved: false };
+  if (target < 0 || target >= rows.length) {
+    return { moved: false, trainings: rows.map(function(item) { return publicTraining_(item.data); }) };
+  }
   const firstOrder = number_(rows[index].data.sortOrder) || index + 1;
   const secondOrder = number_(rows[target].data.sortOrder) || target + 1;
   const sheet = sheet_(SHEETS.TRAININGS);
   const sortColumn = SHEETS.TRAININGS.headers.indexOf('sortOrder') + 1;
   sheet.getRange(rows[index].rowNumber, sortColumn).setValue(secondOrder);
   sheet.getRange(rows[target].rowNumber, sortColumn).setValue(firstOrder);
-  return { moved: true };
+  invalidateRows_(SHEETS.TRAININGS);
+  return {
+    moved: true,
+    trainings: readRows_(SHEETS.TRAININGS).sort(orderSort_).map(publicTraining_)
+  };
 }
 
 function saveStaffBatch_(people) {
@@ -515,20 +591,26 @@ function saveStaffBatch_(people) {
   if (existing.length >= APP.MAX_STAFF) apiError_('LIMIT', '구성원은 최대 ' + APP.MAX_STAFF + '명까지 등록할 수 있습니다.');
   const seen = {};
   existing.forEach(function(person) { seen[staffKey_(person.department, person.name)] = true; });
-  let added = 0;
   let skipped = 0;
   let nextOrder = existing.length ? Math.max.apply(null, existing.map(function(person) { return number_(person.sortOrder); })) + 1 : 1;
+  const created = [];
+  const now = new Date().toISOString();
   people.forEach(function(person) {
     const department = string_(person && person.department, 50);
     const name = string_(person && person.name, 50);
     const key = staffKey_(department, name);
-    if (!department || !name || seen[key] || existing.length + added >= APP.MAX_STAFF) { skipped += 1; return; }
-    appendObject_(SHEETS.STAFF, { id: Utilities.getUuid(), department: department, name: name, active: true, sortOrder: nextOrder++, createdAt: new Date().toISOString() });
+    if (!department || !name || seen[key] || existing.length + created.length >= APP.MAX_STAFF) { skipped += 1; return; }
+    created.push({ id: Utilities.getUuid(), department: department, name: name, active: true, sortOrder: nextOrder++, createdAt: now });
     seen[key] = true;
-    added += 1;
   });
-  audit_('save_staff_batch', 'staff', added, '건너뜀 ' + skipped);
-  return { added: added, skipped: skipped };
+  if (created.length) {
+    const sheet = sheet_(SHEETS.STAFF);
+    sheet.getRange(sheet.getLastRow() + 1, 1, created.length, SHEETS.STAFF.headers.length)
+      .setValues(created.map(function(person) { return objectValues_(SHEETS.STAFF.headers, person); }));
+    invalidateRows_(SHEETS.STAFF);
+  }
+  audit_('save_staff_batch', 'staff', created.length, '건너뜀 ' + skipped);
+  return { added: created.length, skipped: skipped, people: created.map(publicStaff_) };
 }
 
 function updateStaff_(input) {
@@ -541,16 +623,17 @@ function updateStaff_(input) {
   if (!current) apiError_('NOT_FOUND', '구성원을 찾을 수 없습니다.');
   const duplicate = rows.some(function(item) { return item.data.id !== id && staffKey_(item.data.department, item.data.name) === staffKey_(department, name); });
   if (duplicate) apiError_('DUPLICATE_STAFF', '같은 부서와 성명의 구성원이 이미 있습니다.');
-  writeObjectRow_(sheet_(SHEETS.STAFF), SHEETS.STAFF.headers, current.rowNumber, Object.assign({}, current.data, { department: department, name: name }));
+  const stored = Object.assign({}, current.data, { department: department, name: name });
+  writeObjectRow_(sheet_(SHEETS.STAFF), SHEETS.STAFF.headers, current.rowNumber, stored, SHEETS.STAFF);
   audit_('update_staff', id, 1, department + ' ' + name);
-  return { updated: true };
+  return { updated: true, person: publicStaff_(stored) };
 }
 
 function deleteStaff_(staffId) {
   const id = id_(staffId, '구성원');
   deleteRowById_(SHEETS.STAFF, id);
   audit_('delete_staff', id, 1, '기존 서명 기록 유지');
-  return { deleted: true };
+  return { deleted: true, deletedId: id };
 }
 
 function renameDepartment_(oldDepartment, newDepartment) {
@@ -559,17 +642,24 @@ function renameDepartment_(oldDepartment, newDepartment) {
   if (!oldName || !newName) apiError_('VALIDATION', '기존 부서와 새 부서명을 입력해 주세요.');
   const sheet = sheet_(SHEETS.STAFF);
   const rows = readRowsWithNumbers_(SHEETS.STAFF);
-  const departmentColumn = SHEETS.STAFF.headers.indexOf('department') + 1;
   let updated = 0;
   rows.forEach(function(item) {
     if (item.data.department === oldName) {
-      sheet.getRange(item.rowNumber, departmentColumn).setValue(newName);
+      item.data.department = newName;
       updated += 1;
     }
   });
   if (!updated) apiError_('NOT_FOUND', '변경할 부서를 찾지 못했습니다.');
+  sheet.getRange(2, 1, rows.length, SHEETS.STAFF.headers.length)
+    .setValues(rows.map(function(item) { return objectValues_(SHEETS.STAFF.headers, item.data); }));
+  invalidateRows_(SHEETS.STAFF);
   audit_('rename_department', oldName, updated, newName);
-  return { updated: updated };
+  return {
+    updated: updated,
+    oldDepartment: oldName,
+    newDepartment: newName,
+    people: rows.filter(function(item) { return item.data.department === newName; }).map(function(item) { return publicStaff_(item.data); })
+  };
 }
 
 function listRecords_(trainingId, date) {
@@ -589,8 +679,9 @@ function deleteRecord_(recordId) {
   if (!record) apiError_('NOT_FOUND', '서명 기록을 찾을 수 없습니다.');
   trashFileIfExists_(record.data.imageFileId);
   sheet_(SHEETS.SIGNATURES).deleteRow(record.rowNumber);
+  invalidateRows_(SHEETS.SIGNATURES);
   audit_('delete_record', id, 1, record.data.department + ' ' + record.data.name);
-  return { deleted: true };
+  return { deleted: true, deletedId: id };
 }
 
 function rotateShareToken_(frontendUrl) {
@@ -904,9 +995,12 @@ function purgeOriginals_(jobId, confirmation) {
       failed += 1;
     }
   });
+  invalidateRows_(SHEETS.SIGNATURES);
   if (!failed) updateExportJob_(entry.rowNumber, { purgedAt: new Date().toISOString() });
   audit_('purge_originals', job.jobId, deleted, '실패 ' + failed);
-  return { deleted: deleted, failed: failed };
+  invalidateRows_(SHEETS.EXPORTS);
+  const stored = findRow_(SHEETS.EXPORTS, 'jobId', job.jobId);
+  return { deleted: deleted, failed: failed, job: publicJob_(stored || job) };
 }
 
 function cleanupStaleExportJobs() {
@@ -926,7 +1020,7 @@ function cleanupStaleExportJobs() {
 function updateExportJob_(rowNumber, changes) {
   const sheet = sheet_(SHEETS.EXPORTS);
   const current = rowObject_(SHEETS.EXPORTS.headers, sheet.getRange(rowNumber, 1, 1, SHEETS.EXPORTS.headers.length).getValues()[0]);
-  writeObjectRow_(sheet, SHEETS.EXPORTS.headers, rowNumber, Object.assign({}, current, changes, { updatedAt: new Date().toISOString() }));
+  writeObjectRow_(sheet, SHEETS.EXPORTS.headers, rowNumber, Object.assign({}, current, changes, { updatedAt: new Date().toISOString() }), SHEETS.EXPORTS);
 }
 
 function publicJob_(job) {
@@ -955,7 +1049,11 @@ function exportPosition_(index, rowsPerBlock) {
 
 function spreadsheet_() {
   requireInitialized_();
-  return SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID'));
+  const context = requestContext_();
+  if (!context.spreadsheet) {
+    context.spreadsheet = SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID'));
+  }
+  return context.spreadsheet;
 }
 
 /** 초기화·시트 메뉴에서만 사용합니다. 웹앱 요청 경로에서는 호출하지 않습니다. */
@@ -1074,7 +1172,9 @@ function hideDataSheets_(spreadsheet) {
 }
 
 function sheet_(definition) {
-  return ensureSheet_(spreadsheet_(), definition);
+  const context = requestContext_();
+  if (!context.sheets[definition.name]) context.sheets[definition.name] = ensureSheet_(spreadsheet_(), definition);
+  return context.sheets[definition.name];
 }
 
 function ensureSheet_(spreadsheet, definition) {
@@ -1094,12 +1194,28 @@ function readRows_(definition) {
 }
 
 function readRowsWithNumbers_(definition) {
+  const context = requestContext_();
+  const cached = context.rows[definition.name];
+  if (cached) return cloneRowEntries_(cached);
   const sheet = sheet_(definition);
   const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return [];
-  return sheet.getRange(2, 1, lastRow - 1, definition.headers.length).getValues()
+  if (lastRow < 2) {
+    context.rows[definition.name] = [];
+    return [];
+  }
+  const rows = sheet.getRange(2, 1, lastRow - 1, definition.headers.length).getValues()
     .map(function(values, index) { return { rowNumber: index + 2, data: rowObject_(definition.headers, values) }; })
     .filter(function(item) { return Object.keys(item.data).some(function(key) { return item.data[key] !== ''; }); });
+  context.rows[definition.name] = rows;
+  return cloneRowEntries_(rows);
+}
+
+function cloneRowEntries_(rows) {
+  return rows.map(function(item) { return { rowNumber: item.rowNumber, data: Object.assign({}, item.data) }; });
+}
+
+function invalidateRows_(definition) {
+  if (REQUEST_CONTEXT_) delete REQUEST_CONTEXT_.rows[definition.name];
 }
 
 function rowObject_(headers, values) {
@@ -1113,11 +1229,15 @@ function objectValues_(headers, object) {
 }
 
 function appendObject_(definition, object) {
-  sheet_(definition).appendRow(objectValues_(definition.headers, object));
+  const sheet = sheet_(definition);
+  sheet.getRange(sheet.getLastRow() + 1, 1, 1, definition.headers.length)
+    .setValues([objectValues_(definition.headers, object)]);
+  invalidateRows_(definition);
 }
 
-function writeObjectRow_(sheet, headers, rowNumber, object) {
+function writeObjectRow_(sheet, headers, rowNumber, object, definition) {
   sheet.getRange(rowNumber, 1, 1, headers.length).setValues([objectValues_(headers, object)]);
+  if (definition) invalidateRows_(definition);
 }
 
 function findRow_(definition, key, value) {
@@ -1133,6 +1253,7 @@ function deleteRowById_(definition, id) {
   const entry = findRowWithNumber_(definition, 'id', id);
   if (!entry) apiError_('NOT_FOUND', definition.name + ' 항목을 찾을 수 없습니다.');
   sheet_(definition).deleteRow(entry.rowNumber);
+  invalidateRows_(definition);
 }
 
 function readSettings_() {
@@ -1146,13 +1267,13 @@ function readSettings_() {
 
 function writeSettings_(settings) {
   const sheet = sheet_(SHEETS.SETTINGS);
-  const rows = readRowsWithNumbers_(SHEETS.SETTINGS);
-  SETTING_KEYS.forEach(function(key) {
-    const value = settings[key] === undefined ? '' : String(settings[key]);
-    const existing = rows.find(function(item) { return item.data.key === key; });
-    if (existing) writeObjectRow_(sheet, SHEETS.SETTINGS.headers, existing.rowNumber, { key: key, value: value });
-    else appendObject_(SHEETS.SETTINGS, { key: key, value: value });
+  const lastRow = sheet.getLastRow();
+  if (lastRow > 1) sheet.getRange(2, 1, lastRow - 1, SHEETS.SETTINGS.headers.length).clearContent();
+  const values = SETTING_KEYS.map(function(key) {
+    return [key, settings[key] === undefined ? '' : String(settings[key])];
   });
+  sheet.getRange(2, 1, values.length, SHEETS.SETTINGS.headers.length).setValues(values);
+  invalidateRows_(SHEETS.SETTINGS);
 }
 
 function privacyReady_(settings) {

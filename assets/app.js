@@ -21,6 +21,14 @@ const API_URL = String(config.API_URL || '');
 const shareToken = DEMO ? 'DEMO_TOKEN_1234567890123456' : parseShareToken(location.hash);
 const baseUrl = `${location.origin}${location.pathname}`;
 const EXPORT_SETTINGS_KEY = 'training-sign:export-settings';
+const ADMIN_SYNC_MS = 30000;
+const ADMIN_SECTION_FOR_TAB = Object.freeze({
+  trainings: 'trainings',
+  staff: 'staff',
+  exports: 'exports',
+  settings: 'settings',
+  share: 'share'
+});
 
 const state = {
   publicData: null,
@@ -33,7 +41,12 @@ const state = {
   drawing: false,
   currentStroke: null,
   demoAdminData: null,
-  activePreview: null
+  activePreview: null,
+  adminActiveTab: 'trainings',
+  adminLoadedAt: {},
+  adminSectionPromises: {},
+  adminSyncTimer: null,
+  adminAuthenticating: false
 };
 
 const demoData = {
@@ -162,6 +175,7 @@ async function rpc(action, payload = {}, options = {}) {
     const error = new Error(result.error?.message || '요청을 처리하지 못했습니다.');
     error.code = result.error?.code || 'UNKNOWN';
     error.details = result.error?.details;
+    if (error.code === 'SESSION_EXPIRED' && options.admin !== false) queueMicrotask(() => handleExpiredAdminSession(error.message));
     throw error;
   }
   return result.data;
@@ -184,7 +198,17 @@ function demoRpc(action, payload) {
   if (action === 'get_setup_status') return Promise.resolve({ initialized: true, adminConfigured: true });
   if (action === 'admin_login') {
     if (payload.password !== 'demo-admin') return Promise.reject(Object.assign(new Error('데모 비밀번호는 demo-admin입니다.'), { code: 'BAD_PASSWORD' }));
-    return Promise.resolve({ sessionToken: 'demo-session', expiresIn: 1800, adminData: state.demoAdminData });
+    const adminData = payload.view === 'bootstrap'
+      ? { settings: state.demoAdminData.settings, trainings: state.demoAdminData.trainings, staff: [], exports: [], shareToken: '', shareUrl: '', loadedSections: ['settings', 'trainings'] }
+      : state.demoAdminData;
+    return Promise.resolve({ sessionToken: 'demo-session', expiresIn: 1800, adminData });
+  }
+  if (action === 'get_admin_section') {
+    if (payload.section === 'staff') return Promise.resolve({ section: 'staff', staff: state.demoAdminData.staff });
+    if (payload.section === 'exports') return Promise.resolve({ section: 'exports', exports: state.demoAdminData.exports });
+    if (payload.section === 'settings') return Promise.resolve({ section: 'settings', settings: state.demoAdminData.settings });
+    if (payload.section === 'trainings') return Promise.resolve({ section: 'trainings', trainings: state.demoAdminData.trainings });
+    if (payload.section === 'share') return Promise.resolve({ section: 'share', shareToken: state.demoAdminData.shareToken, shareUrl: state.demoAdminData.shareUrl });
   }
   if (action === 'get_admin_data') return Promise.resolve(state.demoAdminData);
   if (action === 'list_records') return Promise.resolve({ records: [
@@ -470,12 +494,121 @@ async function copyText(value, message = '복사했습니다.') {
   }
 }
 
+function emptyAdminData() {
+  return {
+    settings: {}, trainings: [], staff: [], exports: [], shareToken: '', shareUrl: '', loadedSections: []
+  };
+}
+
+function setAdminSectionLoading(loading, message = '관리자 정보를 불러오는 중입니다.') {
+  const box = $('adminSectionLoading');
+  box.querySelector('p').textContent = message;
+  setHidden(box, !loading);
+}
+
+function setAdminAuthenticating(authenticating) {
+  state.adminAuthenticating = authenticating;
+  $('adminDialog').classList.toggle('admin-authenticating', authenticating);
+  setAdminSectionLoading(authenticating, '비밀번호를 확인하고 연수 목록을 불러오는 중입니다.');
+}
+
+function markAdminSectionLoaded(section, timestamp = Date.now()) {
+  state.adminLoadedAt[section] = timestamp;
+  if (!state.adminData.loadedSections.includes(section)) state.adminData.loadedSections.push(section);
+}
+
+function mergeAdminSection(data) {
+  if (!state.adminData || !data) return;
+  ['settings', 'trainings', 'staff', 'exports', 'shareToken', 'shareUrl'].forEach(key => {
+    if (Object.hasOwn(data, key)) state.adminData[key] = data[key];
+  });
+  markAdminSectionLoaded(data.section);
+}
+
+function renderAdminSection(section) {
+  if (section === 'trainings') {
+    renderTrainingAdmin();
+    populateTrainingSelects();
+    restoreExportSettings();
+  }
+  if (section === 'staff') renderStaffAdmin();
+  if (section === 'exports') renderExportJobs();
+  if (section === 'settings') fillSettingsForm();
+  if (section === 'share') renderShareAdmin();
+}
+
+async function loadAdminSection(section, { force = false, background = false } = {}) {
+  if (!section || !state.adminSession || state.adminAuthenticating) return;
+  const loadedAt = state.adminLoadedAt[section] || 0;
+  if (!force && loadedAt && Date.now() - loadedAt < ADMIN_SYNC_MS) return;
+  if (state.adminSectionPromises[section]) return state.adminSectionPromises[section];
+  if (!background) setAdminSectionLoading(true, '현재 화면을 불러오는 중입니다.');
+  const request = rpc('get_admin_section', { section })
+    .then(data => {
+      mergeAdminSection(data);
+      renderAdminSection(section);
+      return data;
+    })
+    .catch(error => {
+      if (error.code === 'SESSION_EXPIRED') handleExpiredAdminSession(error.message);
+      else if (!background) showToast(error.message, 4200);
+      throw error;
+    })
+    .finally(() => {
+      delete state.adminSectionPromises[section];
+      if (!background && !state.adminAuthenticating) setAdminSectionLoading(false);
+    });
+  state.adminSectionPromises[section] = request;
+  return request;
+}
+
+function startAdminBackgroundSync() {
+  clearInterval(state.adminSyncTimer);
+  state.adminSyncTimer = setInterval(() => {
+    if (!$('adminDialog').open || !state.adminSession || state.adminAuthenticating) return;
+    const section = ADMIN_SECTION_FOR_TAB[state.adminActiveTab];
+    if (section === 'settings' && $('settingsForm').contains(document.activeElement)) return;
+    if (section) loadAdminSection(section, { force: true, background: true }).catch(() => {});
+  }, ADMIN_SYNC_MS);
+}
+
+function handleExpiredAdminSession(message = '관리자 로그인이 만료되었습니다. 다시 로그인해 주세요.') {
+  clearInterval(state.adminSyncTimer);
+  state.adminSession = '';
+  state.adminData = null;
+  state.adminLoadedAt = {};
+  if ($('adminDialog').open) $('adminDialog').close();
+  showToast(message, 4200);
+}
+
+async function refreshActiveAdminSection() {
+  const button = $('adminRefresh');
+  const section = ADMIN_SECTION_FOR_TAB[state.adminActiveTab];
+  if (!section) {
+    if ($('recordTraining').value && $('recordDate').value) await loadRecords();
+    else showToast('연수와 날짜를 선택하면 서명 기록을 새로 조회할 수 있습니다.');
+    return;
+  }
+  button.disabled = true;
+  try {
+    await loadAdminSection(section, { force: true });
+    showToast('현재 화면을 새로 불러왔습니다.');
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function openAdminLogin() {
+  const errorBox = $('adminLoginError');
   $('adminLoginError').textContent = '';
   setHidden($('adminLoginError'), true);
   $('adminPassword').value = '';
   $('adminPasswordConfirm').value = '';
   $('setupCode').value = '';
+  $('adminLoginTitle').textContent = '관리자 확인 중';
+  $('adminLoginSubmit').textContent = '확인 중…';
+  $('adminLoginSubmit').disabled = true;
+  if (!$('adminLoginDialog').open) $('adminLoginDialog').showModal();
   try {
     const status = await rpc('get_setup_status', {}, { admin: false });
     const setupRequired = !status.adminConfigured;
@@ -487,9 +620,12 @@ async function openAdminLogin() {
     $('adminPasswordConfirm').required = setupRequired;
     $('adminPassword').autocomplete = setupRequired ? 'new-password' : 'current-password';
     $('adminLoginForm').dataset.setupRequired = setupRequired ? '1' : '0';
-    $('adminLoginDialog').showModal();
+    $('adminLoginSubmit').disabled = false;
+    $('adminPassword').focus();
   } catch (error) {
-    showToast(error.message, 4200);
+    errorBox.textContent = error.message;
+    setHidden(errorBox, false);
+    $('adminLoginSubmit').disabled = false;
   }
 }
 
@@ -498,37 +634,93 @@ async function handleAdminLogin(event) {
   const setupRequired = event.currentTarget.dataset.setupRequired === '1';
   const password = $('adminPassword').value;
   const errorBox = $('adminLoginError');
+  if (setupRequired) {
+    if (!isValidAdminPassword(password)) {
+      errorBox.textContent = '비밀번호는 숫자 4자리 또는 문자와 숫자를 포함한 10자 이상으로 설정해 주세요.';
+      setHidden(errorBox, false);
+      return;
+    }
+    if (password !== $('adminPasswordConfirm').value) {
+      errorBox.textContent = '비밀번호 확인이 일치하지 않습니다.';
+      setHidden(errorBox, false);
+      return;
+    }
+  }
+  state.adminSession = '';
+  state.adminData = emptyAdminData();
+  state.adminLoadedAt = {};
+  state.adminActiveTab = 'trainings';
+  switchAdminTab('trainings', { sync: false });
+  renderTrainingAdmin();
+  populateTrainingSelects();
+  $('adminLoginDialog').close();
+  if (!$('adminDialog').open) $('adminDialog').showModal();
+  setAdminAuthenticating(true);
   try {
     let data;
     if (setupRequired) {
-      if (!isValidAdminPassword(password)) throw new Error('비밀번호는 숫자 4자리 또는 문자와 숫자를 포함한 10자 이상으로 설정해 주세요.');
-      if (password !== $('adminPasswordConfirm').value) throw new Error('비밀번호 확인이 일치하지 않습니다.');
       data = await rpc('complete_setup', {
         setupCode: $('setupCode').value.trim(),
         password,
-        frontendUrl: baseUrl
+        frontendUrl: baseUrl,
+        view: 'bootstrap'
       }, { admin: false });
     } else {
-      data = await rpc('admin_login', { password }, { admin: false });
+      data = await rpc('admin_login', { password, view: 'bootstrap' }, { admin: false });
     }
     state.adminSession = data.sessionToken;
-    state.adminData = data.adminData;
-    $('adminLoginDialog').close();
+    state.adminData = Object.assign(emptyAdminData(), data.adminData || {});
+    state.adminData.loadedSections = Array.isArray(data.adminData?.loadedSections) ? [...data.adminData.loadedSections] : [];
+    state.adminData.loadedSections.forEach(section => { state.adminLoadedAt[section] = Date.now(); });
     renderAdmin();
-    $('adminDialog').showModal();
+    setAdminAuthenticating(false);
+    startAdminBackgroundSync();
   } catch (error) {
+    setAdminAuthenticating(false);
+    state.adminSession = '';
+    state.adminData = null;
+    state.adminLoadedAt = {};
+    if ($('adminDialog').open) $('adminDialog').close();
     errorBox.textContent = error.message;
     setHidden(errorBox, false);
+    if (!$('adminLoginDialog').open) $('adminLoginDialog').showModal();
+    $('adminPassword').select();
   }
 }
 
-function switchAdminTab(tab) {
+function switchAdminTab(tab, { sync = true } = {}) {
+  state.adminActiveTab = tab;
   document.querySelectorAll('#adminTabs button').forEach(button => button.classList.toggle('active', button.dataset.adminTab === tab));
   document.querySelectorAll('[data-admin-panel]').forEach(panel => panel.classList.toggle('active', panel.dataset.adminPanel === tab));
+  if (!sync) return;
+  const section = ADMIN_SECTION_FOR_TAB[tab];
+  if (!section) return;
+  const firstLoad = !state.adminLoadedAt[section];
+  loadAdminSection(section, { background: !firstLoad }).catch(() => {});
 }
 
 function trainingMeta(training) {
   return [trainingTimeLabel(training), training.active ? '활성' : '비활성'].join(' · ');
+}
+
+function upsertAdminItem(list, item, key = 'id') {
+  const next = [...(list || [])];
+  const index = next.findIndex(current => current[key] === item[key]);
+  if (index >= 0) next[index] = item;
+  else next.push(item);
+  return next;
+}
+
+function sortByRegistration(items) {
+  return [...(items || [])].sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+}
+
+function upsertExportJob(job) {
+  if (!job || !state.adminData) return;
+  state.adminData.exports = upsertAdminItem(state.adminData.exports, job, 'jobId')
+    .sort((a, b) => String(b.createdAt || b.updatedAt || '').localeCompare(String(a.createdAt || a.updatedAt || '')));
+  markAdminSectionLoaded('exports');
+  renderExportJobs();
 }
 
 function renderTrainingAdmin() {
@@ -578,8 +770,10 @@ async function saveTraining(event) {
     return;
   }
   try {
-    await rpc('save_training', { training });
-    await refreshAdminData();
+    const result = await rpc('save_training', { training });
+    state.adminData.trainings = sortByRegistration(upsertAdminItem(state.adminData.trainings, result.training));
+    markAdminSectionLoaded('trainings');
+    renderAdminSection('trainings');
     setHidden($('trainingForm'), true);
     showToast('연수를 저장했습니다.');
   } catch (error) { showToast(error.message, 4200); }
@@ -601,11 +795,14 @@ async function handleTrainingListClick(event) {
         danger: true
       });
       if (!confirmed) return;
-      await rpc('delete_training', { trainingId: training.id });
+      const result = await rpc('delete_training', { trainingId: training.id });
+      state.adminData.trainings = state.adminData.trainings.filter(item => item.id !== (result.deletedId || training.id));
     } else {
-      await rpc('move_training', { trainingId: training.id, direction: button.dataset.action === 'move-up' ? 'up' : 'down' });
+      const result = await rpc('move_training', { trainingId: training.id, direction: button.dataset.action === 'move-up' ? 'up' : 'down' });
+      if (Array.isArray(result.trainings)) state.adminData.trainings = result.trainings;
     }
-    await refreshAdminData();
+    markAdminSectionLoaded('trainings');
+    renderAdminSection('trainings');
   } catch (error) { showToast(error.message, 4200); }
 }
 
@@ -628,7 +825,9 @@ async function addStaff(event) {
   try {
     const result = await rpc('save_staff_batch', { people: names.map(name => ({ department, name })) });
     $('staffNames').value = '';
-    await refreshAdminData();
+    state.adminData.staff = sortByRegistration([...(state.adminData.staff || []), ...(result.people || [])]);
+    markAdminSectionLoaded('staff');
+    renderStaffAdmin();
     showToast(`${result.added}명 등록, ${result.skipped}명 건너뜀`);
   } catch (error) { showToast(error.message, 4200); }
 }
@@ -650,7 +849,8 @@ async function handleStaffListClick(event) {
         ]
       });
       if (!edited) return;
-      await rpc('update_staff', { person: { id: person.id, department: edited.department, name: edited.name } });
+      const result = await rpc('update_staff', { person: { id: person.id, department: edited.department, name: edited.name } });
+      state.adminData.staff = sortByRegistration(upsertAdminItem(state.adminData.staff, result.person || { ...person, ...edited }));
     } else {
       const confirmed = await requestConfirmation({
         title: '구성원을 삭제할까요?',
@@ -659,9 +859,11 @@ async function handleStaffListClick(event) {
         danger: true
       });
       if (!confirmed) return;
-      await rpc('delete_staff', { staffId: person.id });
+      const result = await rpc('delete_staff', { staffId: person.id });
+      state.adminData.staff = state.adminData.staff.filter(item => item.id !== (result.deletedId || person.id));
     }
-    await refreshAdminData();
+    markAdminSectionLoaded('staff');
+    renderStaffAdmin();
   } catch (error) { showToast(error.message, 4200); }
 }
 
@@ -673,7 +875,9 @@ async function renameDepartment(event) {
   try {
     const result = await rpc('rename_department', { oldDepartment, newDepartment });
     $('newDepartment').value = '';
-    await refreshAdminData();
+    state.adminData.staff = state.adminData.staff.map(person => person.department === oldDepartment ? { ...person, department: newDepartment } : person);
+    markAdminSectionLoaded('staff');
+    renderStaffAdmin();
     showToast(`${result.updated}명의 부서명을 변경했습니다.`);
   } catch (error) { showToast(error.message, 4200); }
 }
@@ -705,7 +909,9 @@ async function importRosterFile(event) {
     });
     if (!confirmed) return;
     const result = await rpc('save_staff_batch', { people });
-    await refreshAdminData();
+    state.adminData.staff = sortByRegistration([...(state.adminData.staff || []), ...(result.people || [])]);
+    markAdminSectionLoaded('staff');
+    renderStaffAdmin();
     status.textContent = `${result.added}명 등록, ${result.skipped}명 건너뜀`;
   } catch (error) {
     status.textContent = error.message;
@@ -738,9 +944,11 @@ async function saveSettings(event) {
   };
   if (!isPrivacyReady(settings)) return showToast('개인정보 안내 항목을 모두 입력해 주세요.');
   try {
-    await rpc('save_settings', { settings, frontendUrl: baseUrl });
-    await refreshAdminData();
-    applySettings(settings);
+    const result = await rpc('save_settings', { settings, frontendUrl: baseUrl });
+    state.adminData.settings = result.settings || settings;
+    markAdminSectionLoaded('settings');
+    fillSettingsForm();
+    applySettings(state.adminData.settings);
     showToast('기관 설정을 저장했습니다.');
   } catch (error) { showToast(error.message, 4200); }
 }
@@ -780,8 +988,11 @@ async function handleRecordClick(event) {
   });
   if (!confirmed) return;
   try {
-    await rpc('delete_record', { recordId: record.id });
-    await loadRecords();
+    const result = await rpc('delete_record', { recordId: record.id });
+    state.records = state.records.filter(item => item.id !== (result.deletedId || record.id));
+    $('recordSummary').innerHTML = `<p class="selection-summary">서명 ${state.records.length}건</p>`;
+    row.remove();
+    if (!state.records.length) $('recordList').innerHTML = '<div class="empty-state">서명 기록이 없습니다.</div>';
     showToast('서명 기록을 삭제했습니다.');
   } catch (error) { showToast(error.message, 4200); }
 }
@@ -875,6 +1086,7 @@ async function startExport(event) {
       sort: payload.sort, showRate: payload.showRate, outputType: payload.outputType
     }));
     const job = await rpc('start_export', payload);
+    upsertExportJob(job);
     setHidden($('exportProgress'), false);
     await runExportJob(job.jobId);
   } catch (error) { showToast(error.message, 5200); }
@@ -892,8 +1104,8 @@ async function runExportJob(jobId) {
       box.querySelector('p').textContent = job.status === 'preview_ready'
         ? '실제 서명이 포함된 A4 미리보기를 만들었습니다.'
         : `서명 이미지를 배치하는 중입니다. ${job.progress}/${job.total}`;
+      upsertExportJob(job);
     } while (job.status === 'processing' || job.status === 'queued');
-    await refreshAdminData();
     if (job.status === 'preview_ready') await openExportPreview(job);
     else if (job.status === 'failed') throw new Error(job.error || '출력 파일 생성에 실패했습니다.');
   } catch (error) {
@@ -1002,14 +1214,14 @@ async function confirmExportPreview() {
       } catch {
         openedFallback = Boolean(window.open(preview.blobUrl, '_blank', 'noopener'));
       }
-      rpc('record_print_opened', { jobId: job.jobId }).then(refreshAdminData).catch(() => {});
+      rpc('record_print_opened', { jobId: job.jobId }).then(upsertExportJob).catch(() => {});
       showToast(openedFallback ? '새 탭에서 오른쪽 위 인쇄 버튼을 눌러 주세요.' : '인쇄창을 열었습니다.', 5200);
       return;
     }
     button.disabled = true;
     button.textContent = job.outputType === 'xlsx' ? '엑셀 만드는 중…' : 'PDF 준비 중…';
     const completed = await rpc('finalize_export', { jobId: job.jobId });
-    await refreshAdminData();
+    upsertExportJob(completed);
     await downloadExport(completed.jobId, job.outputType);
     closeExportPreview();
     showToast(job.outputType === 'xlsx' ? '엑셀 파일을 만들었습니다.' : 'PDF 파일을 만들었습니다.');
@@ -1068,7 +1280,7 @@ async function purgeOriginals(job) {
   if (!confirmation) return;
   try {
     const result = await rpc('purge_originals', { jobId: job.jobId, confirmation });
-    await refreshAdminData();
+    if (result.job) upsertExportJob(result.job);
     showToast(result.failed ? `${result.deleted}건 삭제, ${result.failed}건 실패. 다시 시도할 수 있습니다.` : `${result.deleted}건의 원본을 삭제했습니다.`, 5200);
   } catch (error) { showToast(error.message, 5200); }
 }
@@ -1103,24 +1315,22 @@ function restoreExportSettings() {
 
 function renderAdmin() {
   renderTrainingAdmin();
-  renderStaffAdmin();
   fillSettingsForm();
   populateTrainingSelects();
   restoreExportSettings();
-  renderShareAdmin();
-  renderExportJobs();
-}
-
-async function refreshAdminData() {
-  state.adminData = await rpc('get_admin_data');
-  renderAdmin();
+  if (state.adminLoadedAt.staff) renderStaffAdmin();
+  if (state.adminLoadedAt.share) renderShareAdmin();
+  if (state.adminLoadedAt.exports) renderExportJobs();
 }
 
 async function logoutAdmin() {
   closeExportPreview();
   try { await rpc('logout'); } catch { /* Session may already be gone. */ }
+  clearInterval(state.adminSyncTimer);
   state.adminSession = '';
   state.adminData = null;
+  state.adminLoadedAt = {};
+  state.adminSectionPromises = {};
   $('adminDialog').close();
   showToast('로그아웃했습니다.');
 }
@@ -1167,7 +1377,11 @@ function bindEvents() {
   $('adminButton').addEventListener('click', openAdminLogin);
   $('adminLoginForm').addEventListener('submit', handleAdminLogin);
   $('adminTabs').addEventListener('click', event => { const button = event.target.closest('[data-admin-tab]'); if (button) switchAdminTab(button.dataset.adminTab); });
-  $('closeAdmin').addEventListener('click', () => $('adminDialog').close());
+  $('adminRefresh').addEventListener('click', () => refreshActiveAdminSection().catch(error => showToast(error.message, 4200)));
+  $('closeAdmin').addEventListener('click', () => {
+    clearInterval(state.adminSyncTimer);
+    $('adminDialog').close();
+  });
   $('adminLogout').addEventListener('click', logoutAdmin);
   $('newTraining').addEventListener('click', () => openTrainingForm());
   $('cancelTraining').addEventListener('click', () => setHidden($('trainingForm'), true));

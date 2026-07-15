@@ -170,7 +170,11 @@ body[data-panel="trainingPanel"] .site-footer { flex: 0 0 auto; padding: .55rem 
 .admin-tabs { display: flex; gap: .35rem; overflow-x: auto; padding: .65rem 1.1rem; border-bottom: 1px solid var(--line); background: #f8faf9; }
 .admin-tabs button { flex: 0 0 auto; border: 0; border-radius: 10px; background: transparent; padding: .65rem .8rem; color: #5f6e69; font-weight: 800; }
 .admin-tabs button.active { background: var(--brand); color: #fff; }
-.admin-body { height: calc(100% - 139px); overflow: auto; padding: 1.2rem; }
+.admin-body { position: relative; height: calc(100% - 139px); overflow: auto; padding: 1.2rem; }
+.admin-section-loading { position: absolute; inset: 0; z-index: 12; display: grid; place-content: center; gap: .75rem; min-height: 260px; text-align: center; background: rgba(255, 255, 255, .94); }
+.admin-section-loading p { margin: 0; color: var(--muted); font-weight: 750; }
+.admin-dialog.admin-authenticating .admin-tabs,
+.admin-dialog.admin-authenticating .admin-header .button { pointer-events: none; opacity: .62; }
 .admin-section { display: none; }
 .admin-section.active { display: block; }
 .section-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 1rem; }
