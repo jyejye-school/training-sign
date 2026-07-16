@@ -84,9 +84,8 @@ h2, h3 { letter-spacing: -.025em; }
 .signature-frame { position: relative; margin-top: .55rem; overflow: hidden; border: 2px dashed #b9c8c3; border-radius: 16px; background: #fff; touch-action: none; }
 #signatureCanvas { display: block; width: 100%; height: 220px; cursor: crosshair; touch-action: none; }
 .signature-guide { position: absolute; right: 1.2rem; bottom: .8rem; z-index: -1; color: #dce4e1; font-size: 2rem; font-weight: 900; }
-.check-row { display: flex; grid-template-columns: none; align-items: flex-start; gap: .65rem; margin-top: 1rem; font-size: .86rem; font-weight: 650; }
-.check-row input, .inline-check input { width: 18px; min-height: 18px; margin-top: .08rem; accent-color: var(--brand); }
-.privacy-link { padding-left: 1.8rem; font-size: .82rem; }
+.inline-check input { width: 18px; min-height: 18px; margin-top: .08rem; accent-color: var(--brand); }
+.signature-privacy-link { display: block; margin-top: .55rem; font-size: .82rem; }
 .empty-state { margin-top: 1.2rem; padding: 2.5rem 1rem; border-radius: 16px; background: #f5f7f6; color: var(--muted); text-align: center; }
 .empty-training { display: grid; justify-items: center; gap: .45rem; border: 1px dashed rgba(49, 92, 84, .2); }
 .empty-training.hidden { display: none; }

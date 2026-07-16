@@ -333,7 +333,6 @@ function goToSignature() {
   if (!person) return;
   state.selectedStaff = person;
   $('signerSummary').textContent = `${state.selectedTraining.title} · ${person.department} ${person.name}`;
-  $('privacyConfirm').checked = false;
   clearSignature();
   showPanel('signaturePanel');
   requestAnimationFrame(resizeCanvas);
@@ -422,10 +421,6 @@ async function submitSignature() {
   if (!state.selectedTraining || !state.selectedStaff) return;
   if (state.strokes.length === 0 || !state.strokes.some(stroke => stroke.length > 1)) {
     showToast('서명을 먼저 작성해 주세요.');
-    return;
-  }
-  if (!$('privacyConfirm').checked) {
-    showToast('개인정보 처리 안내를 확인해 주세요.');
     return;
   }
   const date = state.publicData.serverDate || todaySeoul();

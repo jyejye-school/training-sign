@@ -8,11 +8,11 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://script.google.com https://script.googleusercontent.com; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'">
   <title>학교 연수 전자서명</title>
   <link id="faviconLink" rel="icon" type="image/svg+xml" href="favicon.svg?v=20260715.2">
-  <link rel="stylesheet" href="assets/styles.css?v=20260715.9">
+  <link rel="stylesheet" href="assets/styles.css?v=20260716.1">
   <script src="assets/config.js"></script>
   <script src="vendor/qrcode.js" defer></script>
   <script src="vendor/xlsx.full.min.js" defer></script>
-  <script type="module" src="assets/app.js?v=20260716.1"></script>
+  <script type="module" src="assets/app.js?v=20260716.2"></script>
 </head>
 <body data-panel="loadingPanel">
   <a class="skip-link" href="#mainContent">본문으로 바로가기</a>
@@ -110,11 +110,7 @@
         <canvas id="signatureCanvas" aria-label="서명 입력란"></canvas>
         <span class="signature-guide" aria-hidden="true">서명</span>
       </div>
-      <label class="check-row">
-        <input id="privacyConfirm" type="checkbox">
-        <span>연수 참여 확인을 위한 개인정보 처리 안내를 확인했습니다.</span>
-      </label>
-      <button id="openPrivacy" class="text-button privacy-link" type="button">개인정보 처리 안내 보기</button>
+      <button id="openPrivacy" class="text-button signature-privacy-link" type="button">개인정보 처리 안내 보기</button>
       <div class="button-row split">
         <button id="backToPerson" class="button secondary" type="button">이전</button>
         <button id="submitSignature" class="button primary" type="button">서명 제출</button>
