@@ -25,6 +25,7 @@ expect(!/관리자 확인 중|확인 중…/.test(app), '관리자 로그인 버
 expect(/get_admin_section/.test(app + backend) && /function getAdminSection_/.test(backend), '관리자 탭별 지연 로딩 API가 누락되었습니다.');
 expect(!/id="adminRefresh"|id="adminLogout"|refreshActiveAdminSection|logoutAdmin/.test(index + app), '제거하기로 한 관리자 새로고침·로그아웃 UI 또는 코드가 남아 있습니다.');
 expect(!/privacyConfirm|연수 참여 확인을 위한 개인정보 처리 안내를 확인했습니다|개인정보 처리 안내를 확인해 주세요/.test(index + app), '서명 제출 전 개인정보 확인 체크 항목 또는 검증이 남아 있습니다.');
+expect(/function syncRecordDateToTraining\(\)[\s\S]*training\.date[\s\S]*todaySeoul\(\)[\s\S]*recordDate[\s\S]*disabled/.test(app) && /recordTraining'\)\.addEventListener\('change', syncRecordDateToTraining\)/.test(app), '서명 기록에서 연수를 선택할 때 날짜가 자동 설정되지 않습니다.');
 expect(/id="closeAdmin"[^>]*>닫기<\//.test(index) && !/id="closeAdmin"[^>]*>×<\//.test(index), '관리자 닫기 버튼이 글자 버튼으로 바뀌지 않았습니다.');
 expect(!/data-admin-tab="exports"|data-admin-panel="exports"/.test(index), '독립 출력·삭제 관리자 탭이 남아 있습니다.');
 expect(/data-action="toggle-export"/.test(app) && /id="trainingExportPanel"/.test(index), '연수별 펼침 출력 기능이 없습니다.');

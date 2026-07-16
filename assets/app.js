@@ -1113,9 +1113,28 @@ async function saveSettings(event) {
 }
 
 function populateTrainingSelects() {
+  const previousTrainingId = $('recordTraining').value;
+  const previousDate = $('recordDate').value;
   const options = (state.adminData?.trainings || []).filter(training => !training.pending).map(training => `<option value="${escapeHtml(training.id)}">${escapeHtml(training.title)}</option>`).join('');
   $('recordTraining').innerHTML = `<option value="">연수 선택</option>${options}`;
-  if (!$('recordDate').value) $('recordDate').value = todaySeoul();
+  const previousTraining = (state.adminData?.trainings || []).find(training => training.id === previousTrainingId && !training.pending);
+  if (previousTraining) {
+    $('recordTraining').value = previousTraining.id;
+    $('recordDate').value = previousTraining.daily ? (previousDate || todaySeoul()) : previousTraining.date;
+    $('recordDate').disabled = !previousTraining.daily;
+  } else {
+    $('recordDate').value = todaySeoul();
+    $('recordDate').disabled = false;
+  }
+}
+
+function syncRecordDateToTraining() {
+  const training = (state.adminData?.trainings || []).find(item => item.id === $('recordTraining').value && !item.pending);
+  $('recordDate').value = training && !training.daily ? training.date : todaySeoul();
+  $('recordDate').disabled = Boolean(training && !training.daily);
+  state.records = [];
+  $('recordSummary').replaceChildren();
+  $('recordList').replaceChildren();
 }
 
 async function loadRecords(event) {
@@ -1600,6 +1619,7 @@ function bindEvents() {
     renderFaviconSetting('기본 아이콘으로 되돌렸습니다. 설정 저장을 눌러 적용하세요.');
   });
   $('settingsForm').addEventListener('submit', saveSettings);
+  $('recordTraining').addEventListener('change', syncRecordDateToTraining);
   $('recordFilterForm').addEventListener('submit', loadRecords);
   $('recordList').addEventListener('click', handleRecordClick);
   $('rotateShareToken').addEventListener('click', rotateShareToken);
