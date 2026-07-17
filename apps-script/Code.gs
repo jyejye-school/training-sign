@@ -5,7 +5,7 @@
  */
 
 const APP = Object.freeze({
-  VERSION: '1.5.1',
+  VERSION: '1.5.2',
   TIME_ZONE: 'Asia/Seoul',
   DATA_FILE: '학교 연수 전자서명 데이터',
   GUIDE_SHEET: '사용설명서',
@@ -1115,68 +1115,169 @@ function ensureGuideSheet_(spreadsheet, rebuild) {
     sheet.setName(APP.GUIDE_SHEET);
     rebuild = true;
   }
-  if (!rebuild && String(sheet.getRange('A1').getValue()).indexOf('학교 연수 전자서명') >= 0) {
+  if (!rebuild && String(sheet.getRange('B2').getValue()).indexOf('학교 연수 전자서명') >= 0) {
     sheet.showSheet();
     spreadsheet.setActiveSheet(sheet);
     return sheet;
   }
 
+  sheet.getRange(1, 1, sheet.getMaxRows(), sheet.getMaxColumns()).breakApart();
   sheet.clear();
   sheet.clearConditionalFormatRules();
   sheet.setHiddenGridlines(true);
-  sheet.setFrozenRows(3);
-  sheet.setColumnWidth(1, 34);
-  sheet.setColumnWidth(2, 170);
-  sheet.setColumnWidth(3, 170);
-  sheet.setColumnWidth(4, 170);
+  sheet.setFrozenRows(4);
+  sheet.setTabColor('#165DFF');
+  sheet.setColumnWidth(1, 22);
+  sheet.setColumnWidth(2, 54);
+  sheet.setColumnWidth(3, 178);
+  sheet.setColumnWidth(4, 270);
   sheet.setColumnWidth(5, 170);
-  sheet.setColumnWidth(6, 34);
-  for (let row = 1; row <= 38; row += 1) sheet.setRowHeight(row, row === 1 ? 18 : 28);
+  sheet.setColumnWidth(6, 22);
+  for (let row = 1; row <= 66; row += 1) sheet.setRowHeight(row, 27);
+  sheet.setRowHeight(1, 14);
+  sheet.setRowHeight(2, 44);
+  sheet.setRowHeight(3, 26);
+  sheet.setRowHeight(4, 44);
 
-  sheet.getRange('A1:F38').setBackground('#F6F4EE').setFontFamily('Arial').setFontColor('#23342F').setVerticalAlignment('middle');
-  sheet.getRange('B2:E2').merge().setValue('학교 연수 전자서명 시스템').setFontSize(22).setFontWeight('bold').setFontColor('#244C43');
-  sheet.getRange('B3:E3').merge().setValue('Google 시트 사본 하나로 시작하는 비공개 운영 안내').setFontSize(11).setFontColor('#5E6F69');
-  sheet.getRange('B5:E5').merge().setValue('처음 설치할 때').setFontSize(14).setFontWeight('bold').setBackground('#DDEBE5');
+  sheet.getRange('A1:F66')
+    .setBackground('#F7F9FC')
+    .setFontFamily('Arial')
+    .setFontColor('#334155')
+    .setFontSize(10)
+    .setVerticalAlignment('middle');
+  sheet.getRange('B2:E2').merge()
+    .setValue('학교 연수 전자서명 시스템 사용설명서')
+    .setBackground('#123A73')
+    .setFontColor('#FFFFFF')
+    .setFontSize(18)
+    .setFontWeight('bold');
+  sheet.getRange('B3:E3').merge()
+    .setValue('다른 학교에서 사본을 만들어 자기 계정으로 독립 운영하는 방법')
+    .setBackground('#123A73')
+    .setFontColor('#DCE8FF')
+    .setFontSize(10);
+  sheet.getRange('B4:E4').merge()
+    .setValue('중요  이 파일은 배포용 원본입니다. 원본에서 초기화하지 말고 반드시 파일 → 사본 만들기로 시작하세요.')
+    .setBackground('#FFF4DF')
+    .setFontColor('#A05A00')
+    .setFontWeight('bold')
+    .setWrap(true);
 
-  const installRows = [
-    ['1', '학교용 사본 만들기', '이 배포용 원본은 비워 두고, 파일 → 사본 만들기로 학교용 파일을 만듭니다.'],
-    ['2', '초기 설정 실행', '학교용 사본에서 🖊️ 전자서명 관리 → 초기 설정 실행을 선택하고 권한을 승인합니다.'],
-    ['3', '웹앱 배포', '확장 프로그램 → Apps Script → 배포 → 새 배포 → 웹 앱에서 ‘나로 실행 / 모든 사용자’를 선택합니다.'],
-    ['4', '화면 연결', '웹앱의 /exec 주소를 GitHub Pages의 assets/config.js에 입력합니다.'],
-    ['5', '관리자 첫 설정', '초기 설정 코드로 숫자 4자리 또는 문자·숫자 포함 10자 이상의 비밀번호를 만들고 학교 정보·개인정보 안내·명단·연수를 등록합니다.']
+  const guideSections = [
+    {
+      title: '1. 학교용 사본과 Google 백엔드 만들기',
+      color: '#165DFF',
+      pale: '#EAF1FF',
+      steps: [
+        ['1', '학교용 사본 만들기', '상단 메뉴에서 파일 → 사본 만들기를 누릅니다.', '사본 이름은 학교명이 드러나지 않는 관리용 이름으로 정해도 됩니다.'],
+        ['2', '초기 설정 실행', '새 사본에서 🖊️ 전자서명 관리 → 초기 설정 실행을 누르고 Drive·Sheets 권한을 승인합니다.', '설정·구성원·연수·서명·출력 작업·감사 기록 탭과 비공개 폴더가 자동으로 만들어집니다.'],
+        ['3', '초기 설정 코드 보관', '완료 창에 나온 초기 설정 코드를 잠시 적어 둡니다.', '첫 관리자 비밀번호를 만들면 자동으로 폐기됩니다.'],
+        ['4', 'Apps Script 열기', '확장 프로그램 → Apps Script를 누릅니다.', '연결된 스크립트가 새 학교용 사본과 함께 복사되어 있습니다.'],
+        ['5', '새 웹앱 배포', 'Apps Script 오른쪽 위 배포 → 새 배포 → 유형 선택 → 웹 앱을 고릅니다.', '실행 계정은 나, 액세스 권한은 모든 사용자로 설정합니다.'],
+        ['6', '권한 승인', '배포를 누르고 관리용 Google 계정으로 권한을 승인합니다.', '권한 안내가 나오면 항목을 확인한 뒤 허용합니다.'],
+        ['7', '웹앱 주소 복사', '배포 완료 화면에서 /exec로 끝나는 웹 앱 URL을 복사합니다.', '이 URL은 공개 화면을 Google 시트 백엔드에 연결할 때만 사용합니다.']
+      ]
+    },
+    {
+      title: '2. GitHub Pages 화면 만들기',
+      color: '#18794E',
+      pale: '#EAF7F0',
+      steps: [
+        ['1', '배포 템플릿 열기', '아래 템플릿 저장소를 엽니다.', 'https://github.com/jyejye-school/training-sign-template'],
+        ['2', '내 저장소 만들기', 'Use this template → Create a new repository를 누릅니다.', '저장소 이름은 training-sign, 공개 범위는 Public을 권장합니다.'],
+        ['3', '백엔드 주소 연결', '내 저장소의 assets/config.js를 열고 안내된 자리에 복사한 /exec 주소를 넣어 저장합니다.', '초기 설정 코드·비밀번호·공유 키·명단은 저장소에 넣지 않습니다.'],
+        ['4', 'GitHub Pages 켜기', 'Settings → Pages에서 Deploy from a branch, main, /(root)를 선택합니다.', '몇 분 뒤 https://사용자명.github.io/training-sign/ 주소가 열립니다.'],
+        ['5', '연결 확인', 'GitHub Pages 주소에서 관리자 버튼을 누릅니다.', '첫 설정 화면이 보이면 Google 백엔드 연결이 끝난 것입니다.']
+      ]
+    },
+    {
+      title: '3. 관리자 첫 설정',
+      color: '#6F42C1',
+      pale: '#F3EDFF',
+      steps: [
+        ['1', '관리자 비밀번호 만들기', '초기 설정 코드와 관리자 비밀번호를 입력합니다.', '숫자 4자리 또는 문자·숫자를 포함한 10자 이상 비밀번호를 사용할 수 있습니다.'],
+        ['2', '기관 설정 입력', '기관 설정에서 학교명·부제목·안내문·개인정보 처리 안내·대표 색상을 저장합니다.', '개인정보 안내가 비어 있으면 연수를 활성화할 수 없습니다.'],
+        ['3', '구성원 등록', '구성원에서 부서와 성명을 등록합니다.', '이름은 띄어쓰기·쉼표·줄바꿈으로 여러 명을 한 번에 입력하거나 엑셀·CSV를 가져올 수 있습니다.'],
+        ['4', '연수 등록', '연수에서 새 연수를 만들고 날짜·시간·활성 상태를 정합니다.', '특정 날짜 또는 매일 진행 방식을 선택할 수 있습니다.'],
+        ['5', '공유 링크 배포', '공유·보안에서 참여 링크와 QR을 복사해 학교 내부에 안내합니다.', '링크를 받은 사람은 별도 Google 계정 없이 접속합니다.']
+      ]
+    },
+    {
+      title: '4. 연수 운영과 출력',
+      color: '#165DFF',
+      pale: '#F4F8FF',
+      steps: [
+        ['1', '참여 화면 점검', '연수 날짜·시간·활성 상태를 확인하고 공유 링크를 휴대폰에서도 열어 봅니다.', '참여자는 연수 선택 → 본인 선택 → 서명 제출 순서로 진행합니다.'],
+        ['2', '서명 기록 확인', '서명 기록에서 연수를 선택하면 해당 연수 날짜가 자동으로 설정됩니다.', '잘못 제출된 기록은 개별 삭제할 수 있습니다.'],
+        ['3', '출력 미리보기', '연수 목록의 출력 버튼에서 날짜·열 수·정렬·서명률·PDF/엑셀/인쇄를 고릅니다.', '실제 서명 이미지가 들어간 A4 미리보기를 먼저 확인합니다.'],
+        ['4', '파일 보관', 'PDF 또는 엑셀을 내려받아 학교가 정한 보관 위치에 저장합니다.', '인쇄하기만 실행한 작업은 원본 삭제 조건을 충족하지 않습니다.'],
+        ['5', '원본 삭제', '보관 파일을 확인한 뒤 연수명을 다시 입력해 해당 날짜의 원본 서명과 PNG를 삭제합니다.', '출력 파일은 비공개 Drive의 출력 보관 폴더에 남습니다.']
+      ]
+    },
+    {
+      title: '5. 보안·복구',
+      color: '#B42318',
+      pale: '#FFF0EE',
+      steps: [
+        ['•', '공유 링크 보호', '공유 링크에는 본인 인증이 없습니다. 학교 내부에서만 안내하세요.', '유출되면 공유·보안 → 공유 키 교체 후 새 링크와 QR을 배포합니다.'],
+        ['•', '비밀번호 분실', '학교용 시트에서 🖊️ 전자서명 관리 → 관리자 비밀번호 복구를 누릅니다.', '기존 관리자 세션은 모두 무효화됩니다.'],
+        ['•', '데이터 탭 점검', '🖊️ 전자서명 관리 → 데이터 탭 표시·숨기기를 사용합니다.', '관리용 Google 계정 외에는 시트 편집 권한을 주지 않습니다.'],
+        ['•', '자료 최소 보관', '학교가 정한 보관기간이 끝나면 출력 파일도 관리용 Drive에서 삭제합니다.', '이 시스템은 연수 참여 확인용이며 공식 동의·결재·법적 전자서명용이 아닙니다.']
+      ]
+    }
   ];
-  installRows.forEach(function(row, index) {
-    const targetRow = 7 + index * 2;
-    sheet.getRange(targetRow, 2).setValue(row[0]).setFontSize(14).setFontWeight('bold').setHorizontalAlignment('center').setBackground('#315C54').setFontColor('#FFFFFF');
-    sheet.getRange(targetRow, 3, 1, 2).merge().setValue(row[1]).setFontWeight('bold').setBackground('#FFFFFF');
-    sheet.getRange(targetRow + 1, 3, 1, 3).merge().setValue(row[2]).setWrap(true).setFontSize(10).setFontColor('#56645F');
+
+  let guideRow = 6;
+  guideSections.forEach(function(section) {
+    sheet.getRange(guideRow, 2, 1, 4).merge()
+      .setValue(section.title)
+      .setBackground(section.color)
+      .setFontColor('#FFFFFF')
+      .setFontSize(12)
+      .setFontWeight('bold');
+    sheet.setRowHeight(guideRow, 32);
+    guideRow += 1;
+    section.steps.forEach(function(step) {
+      sheet.getRange(guideRow, 2)
+        .setValue(step[0])
+        .setBackground(section.color)
+        .setFontColor('#FFFFFF')
+        .setFontSize(11)
+        .setFontWeight('bold')
+        .setHorizontalAlignment('center');
+      sheet.getRange(guideRow, 3)
+        .setValue(step[1])
+        .setBackground(section.pale)
+        .setFontColor('#14213D')
+        .setFontWeight('bold')
+        .setWrap(true);
+      sheet.getRange(guideRow, 4, 1, 2).merge()
+        .setValue(step[2] + '\n참고  ' + step[3])
+        .setBackground('#FFFFFF')
+        .setFontColor('#334155')
+        .setWrap(true);
+      sheet.getRange(guideRow, 2, 1, 4)
+        .setBorder(false, false, true, false, false, false, '#D8E2F0', SpreadsheetApp.BorderStyle.SOLID);
+      sheet.setRowHeight(guideRow, 58);
+      guideRow += 1;
+    });
+    guideRow += 1;
   });
 
-  sheet.getRange('B18:E18').merge().setValue('운영할 때 지킬 점').setFontSize(14).setFontWeight('bold').setBackground('#F2D9B8');
-  const cautions = [
-    '공유 링크에는 본인 인증이 없습니다. 학교 내부에서만 공유하고 유출되면 공유 키를 교체하세요.',
-    '개인정보 안내의 목적·항목·보관기간을 모두 입력하기 전에는 연수를 활성화하지 마세요.',
-    'PDF와 XLSX가 모두 생성된 것을 확인한 뒤에만 해당 날짜의 원본 서명 기록과 PNG를 삭제하세요.',
-    '이 시스템은 연수 참여 확인용이며 공식 동의·결재·법적 전자서명 용도로 사용하지 않습니다.'
-  ];
-  cautions.forEach(function(text, index) {
-    const row = 20 + index * 2;
-    sheet.getRange(row, 2).setValue('•').setFontWeight('bold').setFontColor('#B05A31').setHorizontalAlignment('center');
-    sheet.getRange(row, 3, 1, 3).merge().setValue(text).setWrap(true).setFontSize(10);
-  });
-
-  sheet.getRange('B29:E29').merge().setValue('시트 메뉴').setFontSize(14).setFontWeight('bold').setBackground('#DDEBE5');
-  sheet.getRange('B31:E34').setValues([
-    ['초기 설정 코드 보기', '관리자 첫 비밀번호 설정 전 코드 확인', '', ''],
-    ['웹앱 주소 확인', '현재 배포된 /exec 주소 확인', '', ''],
-    ['데이터 탭 표시·숨기기', '기본적으로 숨긴 데이터 탭 점검', '', ''],
-    ['관리자 비밀번호 복구', '기존 세션 무효화 후 임시 비밀번호 발급', '', '']
-  ]);
-  sheet.getRange('B31:B34').setFontWeight('bold').setBackground('#FFFFFF');
-  sheet.getRange('C31:E34').setFontColor('#56645F').setWrap(true);
-  sheet.getRange('B36:E36').merge().setValue('참고: developers.google.com/apps-script/guides/bound · developers.google.com/apps-script/guides/web').setFontSize(9).setFontColor('#6D7773');
-  sheet.getRange('B37:E37').merge().setValue('배포용 원본에는 명단·서명·비밀번호·공유 키·웹앱 주소를 저장하지 않습니다.').setFontSize(9).setFontWeight('bold').setFontColor('#8C4A2F');
-  sheet.getRange('B2:E37').setBorder(false, false, false, false, false, false);
+  sheet.getRange(guideRow, 2, 1, 4).merge()
+    .setValue('공식 참고 문서')
+    .setBackground('#E9EEF5')
+    .setFontColor('#14213D')
+    .setFontSize(11)
+    .setFontWeight('bold');
+  guideRow += 1;
+  sheet.getRange(guideRow, 2, 2, 4).merge()
+    .setValue('Google Apps Script 연결형 스크립트  https://developers.google.com/apps-script/guides/bound\nGoogle Apps Script 웹앱 배포  https://developers.google.com/apps-script/guides/web')
+    .setBackground('#FFFFFF')
+    .setFontColor('#64748B')
+    .setFontSize(9)
+    .setWrap(true);
+  sheet.setRowHeights(guideRow, 2, 32);
   sheet.showSheet();
   spreadsheet.setActiveSheet(sheet);
   return sheet;
