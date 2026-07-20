@@ -5,7 +5,7 @@
  */
 
 const APP = Object.freeze({
-  VERSION: '1.6.1',
+  VERSION: '1.6.2',
   TIME_ZONE: 'Asia/Seoul',
   DATA_FILE: '학교 연수 전자서명 데이터',
   GUIDE_SHEET: '사용설명서',
@@ -1665,7 +1665,7 @@ function ensureGuideSheet_(spreadsheet, rebuild) {
       color: '#18794E',
       pale: '#EAF7F0',
       steps: [
-        ['1', '배포 템플릿 열기', '아래 템플릿 저장소를 엽니다.', 'https://github.com/jyejye-school/training-sign-template'],
+        ['1', '배포 템플릿 열기', '아래 템플릿 저장소를 엽니다.', 'https://github.com/school-training-sign/training-sign-template'],
         ['2', '내 저장소 만들기', 'Use this template → Create a new repository를 누릅니다.', '저장소 이름은 training-sign, 공개 범위는 Public을 권장합니다.'],
         ['3', '백엔드 주소 연결', '내 저장소의 assets/config.js를 열고 안내된 자리에 복사한 /exec 주소를 넣어 저장합니다.', '초기 설정 코드·비밀번호·공유 키·명단은 저장소에 넣지 않습니다.'],
         ['4', 'GitHub Pages 켜기', 'Settings → Pages에서 Deploy from a branch, main, /(root)를 선택합니다.', '몇 분 뒤 https://사용자명.github.io/training-sign/ 주소가 열립니다.'],
