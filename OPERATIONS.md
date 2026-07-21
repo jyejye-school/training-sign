@@ -28,6 +28,8 @@
 4. 실행이 끝나면 데이터 탭은 숨겨지고 `사용설명서`만 표시됩니다. 필요할 때 관리 메뉴에서 데이터 탭을 다시 표시할 수 있습니다.
 5. 대화상자에 표시된 초기 설정 코드를 안전한 곳에 잠시 적어 둡니다. 첫 비밀번호 설정 후 자동 폐기됩니다.
 
+처음 권한을 승인할 때 `Google에서 확인하지 않은 앱`이 나오면 개발자 이메일이 지금 사본을 만든 본인 계정인지 확인하세요. 본인 계정이 맞을 때만 `고급 → 학교 연수 전자서명 시스템으로 이동 → 허용`으로 진행합니다. 모르는 이메일이 표시되거나 조직 정책으로 차단되면 진행하지 말고 Google Workspace 관리자에게 문의하세요. 이 안내는 소유자의 최초 승인에만 표시되며, 일반 서명 참여자에게는 나타나지 않습니다.
+
 초기화를 다시 실행해도 기존 데이터·비밀번호·공유 키는 지우지 않습니다. 누락된 탭·헤더·비공개 폴더·정리 트리거만 복구합니다.
 
 ## 4. 학교용 웹앱 배포
@@ -91,4 +93,5 @@
 
 - [Google Apps Script 연결형 스크립트](https://developers.google.com/apps-script/guides/bound)
 - [Google Apps Script 웹앱 배포](https://developers.google.com/apps-script/guides/web)
+- [Google Apps Script OAuth 검증](https://developers.google.com/apps-script/guides/client-verification)
 - [Google Apps Script Properties Service](https://developers.google.com/apps-script/guides/properties)
