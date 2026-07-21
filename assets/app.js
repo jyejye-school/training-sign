@@ -57,6 +57,14 @@ const state = {
   adminAuthenticating: false,
   settingsFaviconData: '',
   staffNamesComposing: false,
+  activeReceptionTrainingId: '',
+  receptionStatusCache: new Map(),
+  receptionStatusRequest: null,
+  receptionRefreshTimer: null,
+  receptionCountdownTimer: null,
+  receptionDurationMinutes: 5,
+  receptionGeneration: 0,
+  demoReceptions: new Map(),
   activeExportTrainingId: '',
   activeUnsignedTrainingId: '',
   unsignedStatusDate: '',
@@ -78,8 +86,8 @@ const demoData = {
     privacyRetention: '선택한 출력 파일을 보관한 뒤 시스템 원본을 삭제합니다.'
   },
   trainings: [
-    { id: 'demo-training-1', title: '2026 개인정보 보호 연수', date: todaySeoul(), daily: false, startTime: '', endTime: '', active: true, sortOrder: 1, audienceMode: 'all', audienceDepartments: [] },
-    { id: 'demo-training-2', title: '행정실 업무 연수', date: todaySeoul(), daily: true, startTime: '09:00', endTime: '18:00', active: true, sortOrder: 2, audienceMode: 'departments', audienceDepartments: ['행정실'] }
+    { id: 'demo-training-1', title: '2026 개인정보 보호 연수', date: todaySeoul(), daily: false, startTime: '', endTime: '', active: true, sortOrder: 1, audienceMode: 'all', audienceDepartments: [], onsiteCodeRequired: false },
+    { id: 'demo-training-2', title: '행정실 업무 연수', date: todaySeoul(), daily: true, startTime: '09:00', endTime: '18:00', active: true, sortOrder: 2, audienceMode: 'departments', audienceDepartments: ['행정실'], onsiteCodeRequired: true }
   ],
   staff: [
     { id: 'staff-1', department: '교무기획부', name: '김하늘', active: true, sortOrder: 1 },
@@ -213,7 +221,18 @@ function demoRpc(action, payload) {
     };
   }
   if (action === 'get_public_data') return Promise.resolve(demoData);
-  if (action === 'submit_signature') return Promise.resolve({ registeredAt: new Date().toISOString(), demo: true });
+  if (action === 'submit_signature') {
+    const training = state.demoAdminData.trainings.find(item => item.id === payload.trainingId);
+    if (training?.onsiteCodeRequired) {
+      const reception = state.demoReceptions.get(training.id);
+      const open = reception?.status === 'open' && reception.expiresAtMs > Date.now();
+      if (!open) return Promise.reject(Object.assign(new Error('현장 접수가 시작되지 않았거나 종료되었습니다.'), { code: 'RECEPTION_CLOSED' }));
+      if (String(payload.onsiteCode || '') !== reception.code) {
+        return Promise.reject(Object.assign(new Error('현장 접수 코드가 올바르지 않습니다.'), { code: 'BAD_RECEPTION_CODE' }));
+      }
+    }
+    return Promise.resolve({ registeredAt: new Date().toISOString(), demo: true });
+  }
   if (action === 'get_setup_status') return Promise.resolve({ initialized: true, adminConfigured: true });
   if (action === 'admin_login') {
     if (payload.password !== 'demo-admin') return Promise.reject(Object.assign(new Error('데모 비밀번호는 demo-admin입니다.'), { code: 'BAD_PASSWORD' }));
@@ -259,9 +278,53 @@ function demoRpc(action, payload) {
       people
     });
   }
-  if (action === 'list_records') return Promise.resolve({ records: [
-    { id: 'record-1', department: '교무기획부', name: '김하늘', signDate: todaySeoul(), signTime: '10:12:03', trainingId: 'demo-training-1' },
-    { id: 'record-2', department: '교육연구부', name: '이도윤', signDate: todaySeoul(), signTime: '10:20:14', trainingId: 'demo-training-1' }
+  if (action === 'get_training_reception_status') {
+    const training = state.demoAdminData.trainings.find(item => item.id === payload.trainingId);
+    if (!training) return Promise.reject(Object.assign(new Error('연수를 찾을 수 없습니다.'), { code: 'NOT_FOUND' }));
+    const reception = state.demoReceptions.get(training.id);
+    const open = reception?.status === 'open' && reception.expiresAtMs > Date.now();
+    if (!open && reception?.status === 'open') reception.status = 'expired';
+    return Promise.resolve({
+      trainingId: training.id,
+      date: todaySeoul(),
+      status: open ? 'open' : (reception?.status === 'expired' ? 'expired' : 'closed'),
+      sessionId: reception?.sessionId || '',
+      expiresAt: reception?.expiresAt || '',
+      remainingSeconds: open ? Math.max(0, Math.ceil((reception.expiresAtMs - Date.now()) / 1000)) : 0
+    });
+  }
+  if (action === 'start_training_reception') {
+    const training = state.demoAdminData.trainings.find(item => item.id === payload.trainingId);
+    if (!training?.onsiteCodeRequired) return Promise.reject(Object.assign(new Error('현장 접수 코드를 사용하도록 설정한 연수가 아닙니다.'), { code: 'RECEPTION_NOT_REQUIRED' }));
+    const durationMinutes = [5, 10, 15].includes(Number(payload.durationMinutes)) ? Number(payload.durationMinutes) : 5;
+    const now = Date.now();
+    const expiresAtMs = now + durationMinutes * 60 * 1000;
+    const code = String(Math.floor(Math.random() * 1000000)).padStart(6, '0');
+    const reception = {
+      status: 'open', code, sessionId: `demo-reception-${now}`,
+      expiresAtMs, expiresAt: new Date(expiresAtMs).toISOString(), date: todaySeoul()
+    };
+    state.demoReceptions.set(training.id, reception);
+    return Promise.resolve({
+      trainingId: training.id, date: reception.date, status: reception.status,
+      code: reception.code, sessionId: reception.sessionId, expiresAt: reception.expiresAt,
+      remainingSeconds: durationMinutes * 60
+    });
+  }
+  if (action === 'close_training_reception') {
+    const training = state.demoAdminData.trainings.find(item => item.id === payload.trainingId);
+    if (!training) return Promise.reject(Object.assign(new Error('연수를 찾을 수 없습니다.'), { code: 'NOT_FOUND' }));
+    const previous = state.demoReceptions.get(training.id);
+    state.demoReceptions.set(training.id, {
+      status: 'closed', code: '', sessionId: previous?.sessionId || '', expiresAtMs: 0, expiresAt: '', date: todaySeoul()
+    });
+    return Promise.resolve({ trainingId: training.id, date: todaySeoul(), status: 'closed', sessionId: previous?.sessionId || '', remainingSeconds: 0 });
+  }
+  if (action === 'list_records') return Promise.resolve({ records: payload.trainingId === 'demo-training-2' ? [
+    { id: 'record-3', department: '행정실', name: '정민서', signDate: todaySeoul(), signTime: '10:31:22', trainingId: 'demo-training-2', verificationMethod: 'onsite_code' }
+  ] : [
+    { id: 'record-1', department: '교무기획부', name: '김하늘', signDate: todaySeoul(), signTime: '10:12:03', trainingId: 'demo-training-1', verificationMethod: 'share_link' },
+    { id: 'record-2', department: '교육연구부', name: '이도윤', signDate: todaySeoul(), signTime: '10:20:14', trainingId: 'demo-training-1', verificationMethod: 'legacy' }
   ] });
   if (action === 'start_export') {
     const demoTraining = state.demoAdminData.trainings.find(item => item.id === payload.trainingId);
@@ -325,7 +388,7 @@ function renderTrainings() {
     button.type = 'button';
     button.className = 'choice-card';
     button.dataset.trainingId = training.id;
-    button.innerHTML = `<span><strong>${escapeHtml(training.title)}</strong><span class="choice-meta"><small>${escapeHtml(publicTrainingTimeLabel(training))}</small></span></span><b aria-hidden="true">›</b>`;
+    button.innerHTML = `<span><strong>${escapeHtml(training.title)}</strong><span class="choice-meta"><small>${escapeHtml(publicTrainingTimeLabel(training))}</small>${training.onsiteCodeRequired ? '<span class="pill">현장 코드 필요</span>' : ''}</span></span><b aria-hidden="true">›</b>`;
     button.addEventListener('click', () => selectTraining(training.id));
     list.append(button);
   });
@@ -336,6 +399,7 @@ function publicTrainingTimeLabel(training) {
 }
 
 function selectTraining(trainingId) {
+  clearPublicOnsiteCode();
   state.selectedTraining = state.publicData.trainings.find(item => item.id === trainingId) || null;
   state.selectedStaff = null;
   if (!state.selectedTraining) return;
@@ -388,9 +452,52 @@ function goToSignature() {
   if (!person) return;
   state.selectedStaff = person;
   $('signerSummary').textContent = `${state.selectedTraining.title} · ${person.department} ${person.name}`;
+  preparePublicOnsiteCode(Boolean(state.selectedTraining.onsiteCodeRequired));
   clearSignature();
   showPanel('signaturePanel');
   requestAnimationFrame(resizeCanvas);
+}
+
+function clearPublicOnsiteCode() {
+  const input = $('onsiteCodeInput');
+  if (input) {
+    input.value = '';
+    input.removeAttribute('aria-invalid');
+  }
+  const error = $('onsiteCodeError');
+  if (error) {
+    error.textContent = '';
+    setHidden(error, true);
+  }
+}
+
+function preparePublicOnsiteCode(required) {
+  clearPublicOnsiteCode();
+  setHidden($('onsiteCodeField'), !required);
+  $('onsiteCodeInput').disabled = !required;
+  $('onsiteCodeInput').required = required;
+}
+
+function showOnsiteCodeError(message) {
+  const input = $('onsiteCodeInput');
+  const error = $('onsiteCodeError');
+  error.textContent = message;
+  setHidden(error, false);
+  input.setAttribute('aria-invalid', 'true');
+  input.focus();
+  input.select();
+}
+
+async function refreshSelectedTrainingForSubmission() {
+  const trainingId = state.selectedTraining?.id;
+  if (!trainingId) return state.selectedTraining;
+  const refreshed = await rpc('get_public_data', { shareToken }, { admin: false });
+  const training = refreshed?.trainings?.find(item => item.id === trainingId) || null;
+  if (!training) throw new Error('연수 설정이 변경되었습니다. 처음 화면에서 연수를 다시 선택해 주세요.');
+  state.publicData = refreshed;
+  state.selectedTraining = training;
+  preparePublicOnsiteCode(Boolean(training.onsiteCodeRequired));
+  return training;
 }
 
 function clearSignature() {
@@ -478,6 +585,28 @@ async function submitSignature() {
     showToast('서명을 먼저 작성해 주세요.');
     return;
   }
+  let onsiteCodeRequired = Boolean(state.selectedTraining.onsiteCodeRequired);
+  let onsiteCode = $('onsiteCodeInput').value.replace(/\D/g, '').slice(0, 6);
+  if (onsiteCodeRequired && !/^\d{6}$/.test(onsiteCode)) {
+    try {
+      const refreshedTraining = await refreshSelectedTrainingForSubmission();
+      onsiteCodeRequired = Boolean(refreshedTraining?.onsiteCodeRequired);
+      onsiteCode = $('onsiteCodeInput').value.replace(/\D/g, '').slice(0, 6);
+    } catch (error) {
+      showToast(error.message, 4200);
+      return;
+    }
+    if (onsiteCodeRequired && !/^\d{6}$/.test(onsiteCode)) {
+      showOnsiteCodeError('현장에 표시된 6자리 접수 코드를 입력해 주세요.');
+      return;
+    }
+  }
+  if (onsiteCodeRequired) {
+    $('onsiteCodeInput').value = onsiteCode;
+    $('onsiteCodeInput').removeAttribute('aria-invalid');
+    $('onsiteCodeError').textContent = '';
+    setHidden($('onsiteCodeError'), true);
+  }
   const date = state.selectedTraining.daily
     ? (state.publicData.serverDate || todaySeoul())
     : state.selectedTraining.date;
@@ -498,13 +627,22 @@ async function submitSignature() {
       shareToken,
       trainingId: state.selectedTraining.id,
       staffId: state.selectedStaff.id,
-      signatureData: signatureDataUrl()
+      signatureData: signatureDataUrl(),
+      ...(onsiteCodeRequired ? { onsiteCode } : {})
     }, { admin: false });
     localStorage.setItem(duplicateKey, result.registeredAt || new Date().toISOString());
     $('successMessage').textContent = `${state.selectedStaff.department} ${state.selectedStaff.name}님의 참여 확인이 완료되었습니다.${result.demo ? ' 데모이므로 실제 저장되지는 않았습니다.' : ''}`;
+    clearPublicOnsiteCode();
     showPanel('successPanel');
   } catch (error) {
-    showToast(error.message, 4200);
+    if (error.code === 'ONSITE_CODE_REQUIRED') {
+      if (state.selectedTraining) state.selectedTraining.onsiteCodeRequired = true;
+      const publicTraining = state.publicData?.trainings?.find(item => item.id === state.selectedTraining?.id);
+      if (publicTraining) publicTraining.onsiteCodeRequired = true;
+      preparePublicOnsiteCode(true);
+      showOnsiteCodeError(error.message);
+    } else if (/RECEPTION|ONSITE|CHECKIN/.test(String(error.code || ''))) showOnsiteCodeError(error.message);
+    else showToast(error.message, 4200);
   } finally {
     button.disabled = false;
     button.textContent = '서명 제출';
@@ -640,6 +778,8 @@ function startAdminBackgroundSync() {
 function handleExpiredAdminSession(message = '관리자 로그인이 만료되었습니다. 다시 로그인해 주세요.') {
   clearInterval(state.adminSyncTimer);
   stopUnsignedStatusRefresh();
+  deactivateTrainingReception();
+  state.receptionStatusCache.clear();
   state.adminSession = '';
   state.adminData = null;
   state.adminLoadedAt = {};
@@ -702,6 +842,8 @@ async function handleAdminLogin(event) {
     }
   }
   state.adminSession = '';
+  deactivateTrainingReception();
+  state.receptionStatusCache.clear();
   state.adminData = emptyAdminData();
   state.adminLoadedAt = {};
   state.adminActiveTab = 'trainings';
@@ -746,6 +888,10 @@ async function handleAdminLogin(event) {
 
 function switchAdminTab(tab, { sync = true } = {}) {
   state.adminActiveTab = tab;
+  if (tab !== 'trainings' && state.activeReceptionTrainingId) {
+    deactivateTrainingReception();
+    renderTrainingAdmin();
+  }
   if (tab === 'trainings' && state.activeUnsignedTrainingId) startUnsignedStatusRefresh();
   else if (tab !== 'trainings') stopUnsignedStatusRefresh();
   document.querySelectorAll('#adminTabs button').forEach(button => button.classList.toggle('active', button.dataset.adminTab === tab));
@@ -763,7 +909,9 @@ function trainingMeta(training) {
   const audience = trainingAudienceMode(training) === 'departments'
     ? `대상 ${departments.length}개 부서`
     : '대상 전체 구성원';
-  return [trainingTimeLabel(training), audience, training.active ? '활성' : '비활성'].join(' · ');
+  return [trainingTimeLabel(training), audience, training.onsiteCodeRequired ? '현장 코드 사용' : '', training.active ? '활성' : '비활성']
+    .filter(Boolean)
+    .join(' · ');
 }
 
 function upsertAdminItem(list, item, key = 'id') {
@@ -778,6 +926,286 @@ function sortByRegistration(items) {
   return [...(items || [])].sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
 }
 
+function receptionRemainingSeconds(entry) {
+  if (!entry || entry.status !== 'open' || !Number.isFinite(entry.expiresAtMs)) return 0;
+  return Math.max(0, Math.ceil((entry.expiresAtMs - Date.now()) / 1000));
+}
+
+function normalizeReceptionStatus(data = {}, previous = null) {
+  const rawStatus = String(data.status || '').toLowerCase();
+  const status = ['open', 'closed', 'expired'].includes(rawStatus) ? rawStatus : 'closed';
+  const sessionId = String(data.sessionId || '');
+  const explicitRemaining = Number(data.remainingSeconds);
+  const parsedExpiresAt = Date.parse(String(data.expiresAt || ''));
+  const expiresAtMs = Number.isFinite(explicitRemaining) && explicitRemaining > 0
+    ? Date.now() + explicitRemaining * 1000
+    : (Number.isFinite(parsedExpiresAt) ? parsedExpiresAt : 0);
+  const returnedCode = /^\d{6}$/.test(String(data.code || data.receptionCode || ''))
+    ? String(data.code || data.receptionCode)
+    : '';
+  const sameSessionCode = previous?.code && sessionId && previous.sessionId === sessionId ? previous.code : '';
+  const durationMinutes = [5, 10, 15].includes(Number(data.durationMinutes))
+    ? Number(data.durationMinutes)
+    : ([5, 10, 15].includes(Number(previous?.durationMinutes)) ? Number(previous.durationMinutes) : 5);
+  const open = status === 'open' && expiresAtMs > Date.now();
+  return {
+    trainingId: String(data.trainingId || previous?.trainingId || ''),
+    date: String(data.date || previous?.date || ''),
+    status: open ? 'open' : (status === 'open' ? 'expired' : status),
+    sessionId,
+    durationMinutes,
+    expiresAtMs,
+    code: open ? (returnedCode || sameSessionCode) : '',
+    loading: false,
+    error: '',
+    fetchedAt: Date.now()
+  };
+}
+
+function clearReceptionCode(trainingId = '') {
+  if (!trainingId) {
+    state.receptionStatusCache.forEach((entry, key) => {
+      state.receptionStatusCache.set(key, { ...entry, code: '' });
+    });
+    return;
+  }
+  const entry = state.receptionStatusCache.get(trainingId);
+  if (entry) state.receptionStatusCache.set(trainingId, { ...entry, code: '' });
+}
+
+function stopReceptionTimers() {
+  clearInterval(state.receptionRefreshTimer);
+  clearInterval(state.receptionCountdownTimer);
+  state.receptionRefreshTimer = null;
+  state.receptionCountdownTimer = null;
+}
+
+function clearReceptionDisplay() {
+  const code = $('receptionCode');
+  if (code) {
+    code.textContent = '— — — — — —';
+    code.setAttribute('aria-label', '현재 화면에 표시된 현장 접수 코드가 없습니다');
+  }
+  if ($('receptionCountdown')) $('receptionCountdown').textContent = '';
+}
+
+function deactivateTrainingReception() {
+  const trainingId = state.activeReceptionTrainingId;
+  if (trainingId) clearReceptionCode(trainingId);
+  state.activeReceptionTrainingId = '';
+  state.receptionGeneration += 1;
+  state.receptionStatusRequest = null;
+  stopReceptionTimers();
+  clearReceptionDisplay();
+}
+
+function receptionStatusLabel(status, loading) {
+  if (loading) return '확인 중';
+  if (status === 'open') return '접수 중';
+  if (status === 'expired') return '시간 만료';
+  return '접수 전';
+}
+
+function renderReceptionCountdown() {
+  const trainingId = state.activeReceptionTrainingId;
+  if (!trainingId) return;
+  const entry = state.receptionStatusCache.get(trainingId);
+  if (!entry || entry.status !== 'open') return;
+  const remaining = receptionRemainingSeconds(entry);
+  if (remaining <= 0) {
+    state.receptionStatusCache.set(trainingId, { ...entry, status: 'expired', code: '', loading: false });
+    const training = state.adminData?.trainings.find(item => item.id === trainingId);
+    if (training) renderTrainingReceptionPanel(training, { preserveDuration: true });
+    return;
+  }
+  const minutes = Math.floor(remaining / 60);
+  const seconds = String(remaining % 60).padStart(2, '0');
+  $('receptionCountdown').textContent = `${minutes}:${seconds} 남음`;
+}
+
+function renderTrainingReceptionPanel(training, { preserveDuration = false } = {}) {
+  $('trainingReceptionTitle').textContent = training.title;
+  $('trainingReceptionDateHint').textContent = training.daily
+    ? `${formatKoreanDate(todaySeoul())} 현장 접수입니다.`
+    : `${formatKoreanDate(training.date)} 현장 접수입니다.`;
+  const entry = state.receptionStatusCache.get(training.id) || { status: 'closed', code: '', loading: true, error: '' };
+  const remaining = receptionRemainingSeconds(entry);
+  const open = entry.status === 'open' && remaining > 0;
+  if (open && [5, 10, 15].includes(Number(entry.durationMinutes))) {
+    state.receptionDurationMinutes = Number(entry.durationMinutes);
+    $('receptionDuration').value = String(entry.durationMinutes);
+  } else if (!preserveDuration) {
+    $('receptionDuration').value = String(state.receptionDurationMinutes || 5);
+  }
+  const displayStatus = entry.status === 'open' && !open ? 'expired' : entry.status;
+  const code = open && /^\d{6}$/.test(entry.code || '') ? entry.code : '';
+  const codeOutput = $('receptionCode');
+  codeOutput.textContent = code ? `${code.slice(0, 3)} ${code.slice(3)}` : '— — — — — —';
+  codeOutput.setAttribute('aria-label', code
+    ? `현장 접수 코드 ${code.split('').join(' ')}`
+    : (open ? '접수 중이지만 이 화면에서 다시 볼 수 있는 코드는 없습니다' : '현재 사용할 수 있는 현장 접수 코드가 없습니다'));
+  const badge = $('receptionStatusBadge');
+  badge.textContent = receptionStatusLabel(displayStatus, entry.loading);
+  badge.dataset.status = entry.loading ? 'loading' : displayStatus;
+  $('receptionCountdown').textContent = open ? '' : (displayStatus === 'expired' ? '접수 시간이 끝났습니다.' : '');
+  $('receptionCodeHint').textContent = entry.loading
+    ? '현장 접수 상태를 확인하고 있습니다.'
+    : code
+      ? '이 코드는 현재 패널이 열려 있는 동안에만 표시됩니다.'
+      : open
+        ? '접수 중입니다. 코드를 다시 표시하려면 새 코드를 발급해 주세요.'
+        : '접수를 시작하면 이 화면에 코드가 한 번 표시됩니다.';
+  $('receptionError').textContent = entry.error || '';
+  setHidden($('receptionError'), !entry.error);
+  $('receptionDuration').disabled = Boolean(entry.loading);
+  $('startTrainingReception').disabled = Boolean(entry.loading);
+  $('startTrainingReception').textContent = open ? '새 코드 발급' : '접수 시작';
+  $('closeTrainingReception').disabled = Boolean(entry.loading);
+  setHidden($('closeTrainingReception'), !open);
+  renderReceptionCountdown();
+}
+
+async function fetchReceptionStatus({ force = false } = {}) {
+  const trainingId = state.activeReceptionTrainingId;
+  const training = state.adminData?.trainings.find(item => item.id === trainingId);
+  if (!training || !training.onsiteCodeRequired) return;
+  const cached = state.receptionStatusCache.get(trainingId);
+  if (!force && cached?.fetchedAt && Date.now() - cached.fetchedAt < ADMIN_SYNC_MS) {
+    renderTrainingReceptionPanel(training, { preserveDuration: true });
+    return cached;
+  }
+  const generation = state.receptionGeneration;
+  if (state.receptionStatusRequest?.trainingId === trainingId && state.receptionStatusRequest.generation === generation) return state.receptionStatusRequest.promise;
+  const requestSession = state.adminSession;
+  state.receptionStatusCache.set(trainingId, { ...(cached || {}), trainingId, code: cached?.code || '', loading: true, error: '' });
+  renderTrainingReceptionPanel(training, { preserveDuration: true });
+  const promise = rpc('get_training_reception_status', { trainingId })
+    .then(data => {
+      if (!requestSession || state.adminSession !== requestSession || state.activeReceptionTrainingId !== trainingId || state.receptionGeneration !== generation) return null;
+      const previous = state.receptionStatusCache.get(trainingId);
+      state.receptionStatusCache.set(trainingId, normalizeReceptionStatus(data, previous));
+      renderTrainingReceptionPanel(training, { preserveDuration: true });
+      return data;
+    })
+    .catch(error => {
+      if (state.activeReceptionTrainingId === trainingId && state.adminSession === requestSession && state.receptionGeneration === generation) {
+        const previous = state.receptionStatusCache.get(trainingId) || {};
+        state.receptionStatusCache.set(trainingId, { ...previous, code: previous.code || '', loading: false, error: error.message });
+        renderTrainingReceptionPanel(training, { preserveDuration: true });
+      }
+      throw error;
+    })
+    .finally(() => {
+      if (state.receptionStatusRequest?.promise === promise) state.receptionStatusRequest = null;
+    });
+  state.receptionStatusRequest = { trainingId, generation, promise };
+  return promise;
+}
+
+function startReceptionTimers() {
+  stopReceptionTimers();
+  state.receptionCountdownTimer = setInterval(renderReceptionCountdown, 1000);
+  state.receptionRefreshTimer = setInterval(() => {
+    if (!$('adminDialog').open || !state.adminSession || !state.activeReceptionTrainingId) return;
+    fetchReceptionStatus({ force: true }).catch(() => {});
+  }, ADMIN_SYNC_MS);
+}
+
+async function startTrainingReception() {
+  const trainingId = state.activeReceptionTrainingId;
+  const training = state.adminData?.trainings.find(item => item.id === trainingId);
+  if (!training?.onsiteCodeRequired) return;
+  const previous = state.receptionStatusCache.get(trainingId) || { trainingId, status: 'closed', code: '' };
+  if (previous.status === 'open' && receptionRemainingSeconds(previous) > 0) {
+    const confirmed = await requestConfirmation({
+      title: '새 현장 코드를 발급할까요?',
+      message: '현재 코드는 즉시 사용할 수 없게 됩니다.',
+      confirmLabel: '새 코드 발급'
+    });
+    if (!confirmed || state.activeReceptionTrainingId !== trainingId) return;
+  }
+  const durationMinutes = Number($('receptionDuration').value);
+  state.receptionDurationMinutes = [5, 10, 15].includes(durationMinutes) ? durationMinutes : 5;
+  state.receptionGeneration += 1;
+  state.receptionStatusRequest = null;
+  stopReceptionTimers();
+  const generation = state.receptionGeneration;
+  const requestSession = state.adminSession;
+  state.receptionStatusCache.set(trainingId, { ...previous, code: '', loading: true, error: '' });
+  renderTrainingReceptionPanel(training, { preserveDuration: true });
+  try {
+    const data = await rpc('start_training_reception', { trainingId, durationMinutes: state.receptionDurationMinutes });
+    if (!requestSession || state.adminSession !== requestSession || state.activeReceptionTrainingId !== trainingId || state.receptionGeneration !== generation) return;
+    state.receptionStatusCache.set(trainingId, normalizeReceptionStatus(data));
+    renderTrainingReceptionPanel(training, { preserveDuration: true });
+    startReceptionTimers();
+  } catch (error) {
+    if (state.activeReceptionTrainingId === trainingId && state.adminSession === requestSession && state.receptionGeneration === generation) {
+      state.receptionStatusCache.set(trainingId, { ...previous, code: '', loading: false, error: error.message });
+      renderTrainingReceptionPanel(training, { preserveDuration: true });
+      startReceptionTimers();
+    }
+  }
+}
+
+async function closeTrainingReception() {
+  const trainingId = state.activeReceptionTrainingId;
+  const training = state.adminData?.trainings.find(item => item.id === trainingId);
+  if (!training) return;
+  const confirmed = await requestConfirmation({
+    title: '현장 접수를 종료할까요?',
+    message: '현재 코드는 즉시 사용할 수 없게 됩니다.',
+    confirmLabel: '접수 종료',
+    danger: true
+  });
+  if (!confirmed || state.activeReceptionTrainingId !== trainingId) return;
+  const previous = state.receptionStatusCache.get(trainingId) || { trainingId, status: 'closed' };
+  state.receptionGeneration += 1;
+  state.receptionStatusRequest = null;
+  stopReceptionTimers();
+  const generation = state.receptionGeneration;
+  const requestSession = state.adminSession;
+  state.receptionStatusCache.set(trainingId, { ...previous, code: '', loading: true, error: '' });
+  renderTrainingReceptionPanel(training, { preserveDuration: true });
+  try {
+    const data = await rpc('close_training_reception', { trainingId });
+    if (!requestSession || state.adminSession !== requestSession || state.activeReceptionTrainingId !== trainingId || state.receptionGeneration !== generation) return;
+    state.receptionStatusCache.set(trainingId, normalizeReceptionStatus(data));
+    renderTrainingReceptionPanel(training, { preserveDuration: true });
+    startReceptionTimers();
+  } catch (error) {
+    if (state.activeReceptionTrainingId === trainingId && state.adminSession === requestSession && state.receptionGeneration === generation) {
+      state.receptionStatusCache.set(trainingId, { ...previous, code: '', loading: false, error: error.message });
+      renderTrainingReceptionPanel(training, { preserveDuration: true });
+      startReceptionTimers();
+    }
+  }
+}
+
+function collapseTrainingReception() {
+  const trainingId = state.activeReceptionTrainingId;
+  deactivateTrainingReception();
+  renderTrainingAdmin();
+  if (trainingId) {
+    document.querySelector(`[data-training-id="${CSS.escape(trainingId)}"] [data-action="toggle-reception"]`)?.focus();
+  }
+}
+
+function toggleTrainingReception(training) {
+  if (state.activeReceptionTrainingId === training.id) return collapseTrainingReception();
+  deactivateTrainingReception();
+  state.activeExportTrainingId = '';
+  state.activeUnsignedTrainingId = '';
+  stopUnsignedStatusRefresh();
+  state.activeReceptionTrainingId = training.id;
+  state.receptionDurationMinutes = 5;
+  renderTrainingAdmin();
+  fetchReceptionStatus({ force: true }).catch(() => {});
+  startReceptionTimers();
+  $('trainingReceptionPanel').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  $('trainingReceptionPanel').focus();
+}
+
 function upsertExportJob(job) {
   if (!job || !state.adminData) return;
   state.adminData.exports = upsertAdminItem(state.adminData.exports, job, 'jobId')
@@ -789,10 +1217,13 @@ function upsertExportJob(job) {
 
 function renderTrainingAdmin() {
   const container = $('trainingAdminList');
+  const receptionPanel = $('trainingReceptionPanel');
+  const receptionPanelHome = $('trainingReceptionPanelHome');
   const exportPanel = $('trainingExportPanel');
   const exportPanelHome = $('trainingExportPanelHome');
   const unsignedPanel = $('trainingUnsignedPanel');
   const unsignedPanelHome = $('trainingUnsignedPanelHome');
+  if (receptionPanel && receptionPanelHome && receptionPanel.parentElement !== receptionPanelHome) receptionPanelHome.append(receptionPanel);
   if (exportPanel && exportPanelHome && exportPanel.parentElement !== exportPanelHome) exportPanelHome.append(exportPanel);
   if (unsignedPanel && unsignedPanelHome && unsignedPanel.parentElement !== unsignedPanelHome) unsignedPanelHome.append(unsignedPanel);
   const trainings = state.adminData?.trainings || [];
@@ -804,6 +1235,7 @@ function renderTrainingAdmin() {
           <button data-action="move-up" ${training.pending || index === 0 ? 'disabled' : ''}>위</button>
           <button data-action="move-down" ${training.pending || index === trainings.length - 1 ? 'disabled' : ''}>아래</button>
           <button data-action="edit-training" ${training.pending ? 'disabled' : ''}>수정</button>
+          ${training.onsiteCodeRequired ? `<button data-action="toggle-reception" aria-controls="trainingReceptionPanel" aria-expanded="${state.activeReceptionTrainingId === training.id ? 'true' : 'false'}" ${training.pending ? 'disabled' : ''}>${state.activeReceptionTrainingId === training.id ? '접수 접기' : '현장 접수'}</button>` : ''}
           <button data-action="toggle-unsigned" aria-controls="trainingUnsignedPanel" aria-expanded="${state.activeUnsignedTrainingId === training.id ? 'true' : 'false'}" ${training.pending ? 'disabled' : ''}>${state.activeUnsignedTrainingId === training.id ? '현황 접기' : '미서명 현황'}</button>
           <button data-action="toggle-export" aria-controls="trainingExportPanel" aria-expanded="${state.activeExportTrainingId === training.id ? 'true' : 'false'}" ${training.pending ? 'disabled' : ''}>${state.activeExportTrainingId === training.id ? '출력 접기' : '출력'}</button>
           <button data-action="delete-training" class="danger" ${training.pending ? 'disabled' : ''}>삭제</button>
@@ -811,6 +1243,18 @@ function renderTrainingAdmin() {
       </div>
       <div class="training-tool-slot"></div>
     </div>`).join('') : '<div class="empty-state">등록된 연수가 없습니다.</div>';
+  const selectedReception = trainings.find(training => training.id === state.activeReceptionTrainingId && training.onsiteCodeRequired && !training.pending);
+  if (selectedReception && receptionPanel) {
+    const preserveDuration = receptionPanel.dataset.trainingId === selectedReception.id;
+    container.querySelector(`[data-training-id="${CSS.escape(selectedReception.id)}"] .training-tool-slot`)?.append(receptionPanel);
+    receptionPanel.dataset.trainingId = selectedReception.id;
+    setHidden(receptionPanel, false);
+    renderTrainingReceptionPanel(selectedReception, { preserveDuration });
+  } else if (receptionPanel) {
+    if (state.activeReceptionTrainingId) deactivateTrainingReception();
+    receptionPanel.dataset.trainingId = '';
+    setHidden(receptionPanel, true);
+  }
   const selectedExport = trainings.find(training => training.id === state.activeExportTrainingId && !training.pending);
   if (selectedExport && exportPanel) {
     const preserveForm = exportPanel.dataset.trainingId === selectedExport.id;
@@ -861,6 +1305,7 @@ function collapseTrainingExport() {
 
 function toggleTrainingExport(training) {
   if (state.activeExportTrainingId === training.id) return collapseTrainingExport();
+  deactivateTrainingReception();
   state.activeUnsignedTrainingId = '';
   stopUnsignedStatusRefresh();
   state.activeExportTrainingId = training.id;
@@ -1026,6 +1471,7 @@ function collapseTrainingUnsigned() {
 
 function toggleTrainingUnsigned(training) {
   if (state.activeUnsignedTrainingId === training.id) return collapseTrainingUnsigned();
+  deactivateTrainingReception();
   state.activeExportTrainingId = '';
   state.activeUnsignedTrainingId = training.id;
   state.unsignedStatusDate = training.daily ? todaySeoul() : training.date;
@@ -1089,6 +1535,7 @@ function openTrainingForm(training = null) {
   $('trainingStart').value = training?.startTime || '';
   $('trainingEnd').value = training?.endTime || '';
   $('trainingActive').checked = training ? training.active !== false : true;
+  $('trainingOnsiteCodeRequired').checked = Boolean(training?.onsiteCodeRequired);
   const audienceMode = trainingAudienceMode(training || {});
   $('trainingAudienceAll').checked = audienceMode === 'all';
   $('trainingAudienceDepartments').checked = audienceMode === 'departments';
@@ -1108,6 +1555,7 @@ async function saveTraining(event) {
     startTime: $('trainingStart').value,
     endTime: $('trainingEnd').value,
     active: $('trainingActive').checked,
+    onsiteCodeRequired: $('trainingOnsiteCodeRequired').checked,
     audienceMode: document.querySelector('input[name="trainingAudienceMode"]:checked')?.value || 'all',
     audienceDepartments: selectedTrainingAudienceDepartments()
   };
@@ -1134,6 +1582,7 @@ async function saveTraining(event) {
     const result = await rpc('save_training', { training });
     state.adminData.trainings = state.adminData.trainings.filter(item => item.id !== pendingId);
     state.adminData.trainings = sortByRegistration(upsertAdminItem(state.adminData.trainings, result.training));
+    if (!result.training.onsiteCodeRequired && state.activeReceptionTrainingId === result.training.id) deactivateTrainingReception();
     markAdminSectionLoaded('trainings');
     renderAdminSection('trainings');
     showToast('연수를 저장했습니다.');
@@ -1155,7 +1604,14 @@ async function handleTrainingListClick(event) {
   if (!training || training.pending) return;
   const previousTrainings = state.adminData.trainings.map(item => ({ ...item }));
   try {
-    if (button.dataset.action === 'edit-training') return openTrainingForm(training);
+    if (button.dataset.action === 'edit-training') {
+      if (state.activeReceptionTrainingId) {
+        deactivateTrainingReception();
+        renderTrainingAdmin();
+      }
+      return openTrainingForm(training);
+    }
+    if (button.dataset.action === 'toggle-reception') return toggleTrainingReception(training);
     if (button.dataset.action === 'toggle-unsigned') return toggleTrainingUnsigned(training);
     if (button.dataset.action === 'toggle-export') return toggleTrainingExport(training);
     if (button.dataset.action === 'delete-training') {
@@ -1468,7 +1924,7 @@ async function loadRecords(event) {
     state.records = data.records || [];
     $('recordSummary').innerHTML = `<p class="selection-summary">서명 ${state.records.length}건</p>`;
     $('recordList').innerHTML = state.records.length ? state.records.map(record => `
-      <div class="admin-row" data-record-id="${escapeHtml(record.id)}"><div class="admin-row-main"><strong>${escapeHtml(record.department)} ${escapeHtml(record.name)}</strong><small>${escapeHtml(record.signDate)} ${escapeHtml(record.signTime)}</small></div><div class="row-actions"><button class="danger" data-action="delete-record">기록 삭제</button></div></div>`).join('') : '<div class="empty-state">서명 기록이 없습니다.</div>';
+      <div class="admin-row" data-record-id="${escapeHtml(record.id)}"><div class="admin-row-main"><strong>${escapeHtml(record.department)} ${escapeHtml(record.name)}</strong><small class="record-meta">${escapeHtml(record.signDate)} ${escapeHtml(record.signTime)} <span class="record-verification ${record.verificationMethod === 'onsite_code' ? 'onsite' : ''}">${record.verificationMethod === 'onsite_code' ? '현장 코드 확인' : record.verificationMethod === 'share_link' ? '일반 링크' : '기존 기록'}</span></small></div><div class="row-actions"><button class="danger" data-action="delete-record">기록 삭제</button></div></div>`).join('') : '<div class="empty-state">서명 기록이 없습니다.</div>';
   } catch (error) { showToast(error.message, 4200); }
 }
 
@@ -1956,6 +2412,8 @@ function closeAdminAndLogout() {
   const logoutRequest = state.adminSession ? rpc('logout') : Promise.resolve();
   clearInterval(state.adminSyncTimer);
   stopUnsignedStatusRefresh();
+  deactivateTrainingReception();
+  state.receptionStatusCache.clear();
   state.adminSession = '';
   state.adminData = null;
   state.adminLoadedAt = {};
@@ -1976,6 +2434,10 @@ function closeAdminAndLogout() {
 }
 
 async function initializePublicApp() {
+  clearPublicOnsiteCode();
+  preparePublicOnsiteCode(false);
+  state.selectedTraining = null;
+  state.selectedStaff = null;
   $('schoolDate').textContent = formatKoreanHeaderDate(todaySeoul());
   if (!shareToken) {
     showPanel('invalidPanel');
@@ -2001,12 +2463,24 @@ function bindEvents() {
   $('departmentSelect').addEventListener('change', renderStaffForDepartment);
   $('staffSelect').addEventListener('change', () => { $('goToSignature').disabled = !$('staffSelect').value; });
   $('goToSignature').addEventListener('click', goToSignature);
-  $('backToTraining').addEventListener('click', () => showPanel('trainingPanel'));
-  $('backToPerson').addEventListener('click', () => showPanel('personPanel'));
+  $('backToTraining').addEventListener('click', () => { clearPublicOnsiteCode(); showPanel('trainingPanel'); });
+  $('backToPerson').addEventListener('click', () => { clearPublicOnsiteCode(); showPanel('personPanel'); });
   $('submitSignature').addEventListener('click', submitSignature);
   $('clearSignature').addEventListener('click', clearSignature);
   $('undoSignature').addEventListener('click', undoSignature);
-  $('signAnother').addEventListener('click', () => { state.selectedTraining = null; state.selectedStaff = null; showPanel('trainingPanel'); });
+  $('signAnother').addEventListener('click', () => { clearPublicOnsiteCode(); state.selectedTraining = null; state.selectedStaff = null; showPanel('trainingPanel'); });
+  $('onsiteCodeInput').addEventListener('input', event => {
+    event.currentTarget.value = event.currentTarget.value.replace(/\D/g, '').slice(0, 6);
+    event.currentTarget.removeAttribute('aria-invalid');
+    $('onsiteCodeError').textContent = '';
+    setHidden($('onsiteCodeError'), true);
+  });
+  $('onsiteCodeInput').addEventListener('keydown', event => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      submitSignature();
+    }
+  });
   $('signatureCanvas').addEventListener('pointerdown', startDrawing);
   $('signatureCanvas').addEventListener('pointermove', continueDrawing);
   $('signatureCanvas').addEventListener('pointerup', stopDrawing);
@@ -2023,13 +2497,26 @@ function bindEvents() {
     event.preventDefault();
     if (!state.adminAuthenticating) closeAdminAndLogout();
   });
-  $('newTraining').addEventListener('click', () => openTrainingForm());
+  $('newTraining').addEventListener('click', () => {
+    if (state.activeReceptionTrainingId) {
+      deactivateTrainingReception();
+      renderTrainingAdmin();
+    }
+    openTrainingForm();
+  });
   $('cancelTraining').addEventListener('click', () => setHidden($('trainingForm'), true));
   $('trainingForm').addEventListener('submit', saveTraining);
   document.querySelectorAll('input[name="trainingAudienceMode"]').forEach(input => {
     input.addEventListener('change', updateTrainingAudienceVisibility);
   });
   $('trainingAdminList').addEventListener('click', handleTrainingListClick);
+  $('collapseTrainingReception').addEventListener('click', collapseTrainingReception);
+  $('startTrainingReception').addEventListener('click', startTrainingReception);
+  $('closeTrainingReception').addEventListener('click', closeTrainingReception);
+  $('receptionDuration').addEventListener('change', event => {
+    const value = Number(event.currentTarget.value);
+    state.receptionDurationMinutes = [5, 10, 15].includes(value) ? value : 5;
+  });
   $('collapseTrainingExport').addEventListener('click', collapseTrainingExport);
   $('collapseTrainingUnsigned').addEventListener('click', collapseTrainingUnsigned);
   $('unsignedStatusDate').addEventListener('change', event => {

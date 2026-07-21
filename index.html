@@ -8,11 +8,11 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://script.google.com https://script.googleusercontent.com; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'">
   <title>학교 연수 전자서명</title>
   <link id="faviconLink" rel="icon" type="image/svg+xml" href="favicon.svg?v=20260720.5">
-  <link rel="stylesheet" href="assets/styles.css?v=20260721.1">
+  <link rel="stylesheet" href="assets/styles.css?v=20260721.3">
   <script src="assets/config.js"></script>
   <script src="vendor/qrcode.js" defer></script>
   <script src="vendor/xlsx.full.min.js" defer></script>
-  <script type="module" src="assets/app.js?v=20260721.1"></script>
+  <script type="module" src="assets/app.js?v=20260721.3"></script>
 </head>
 <body data-panel="loadingPanel">
   <a class="skip-link" href="#mainContent">본문으로 바로가기</a>
@@ -95,6 +95,12 @@
       <div class="eyebrow">3단계</div>
       <h1 id="signatureHeading">아래 칸에 서명해 주세요</h1>
       <p id="signerSummary" class="selection-summary"></p>
+      <div id="onsiteCodeField" class="onsite-code-entry hidden">
+        <label for="onsiteCodeInput">현장 접수 코드</label>
+        <input id="onsiteCodeInput" class="onsite-code-input" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="off" enterkeyhint="done" aria-describedby="onsiteCodeHint onsiteCodeError" disabled>
+        <p id="onsiteCodeHint" class="form-hint">현장에 표시된 6자리 코드를 입력해 주세요.</p>
+        <p id="onsiteCodeError" class="form-error hidden" role="alert"></p>
+      </div>
       <div class="canvas-toolbar">
         <span>손가락이나 마우스로 작성하세요</span>
         <div>
@@ -187,8 +193,35 @@
         <p>관리자 정보를 불러오는 중입니다.</p>
       </div>
       <section class="admin-section active" data-admin-panel="trainings">
-        <div class="section-heading"><div><h3>연수 관리</h3><p>연수를 설정하고 각 연수의 미서명 현황과 출력 내역을 확인합니다.</p></div><button id="newTraining" class="button primary" type="button">새 연수</button></div>
+        <div class="section-heading"><div><h3>연수 관리</h3><p>연수를 설정하고 현장 접수, 미서명 현황과 출력 내역을 확인합니다.</p></div><button id="newTraining" class="button primary" type="button">새 연수</button></div>
         <div id="trainingAdminList" class="admin-list"></div>
+        <div id="trainingReceptionPanelHome">
+          <section id="trainingReceptionPanel" class="training-tool-panel training-reception-panel hidden" aria-labelledby="trainingReceptionTitle" tabindex="-1">
+            <div class="training-tool-heading">
+              <div><p class="eyebrow">현장 접수 코드</p><h4 id="trainingReceptionTitle"></h4><p id="trainingReceptionDateHint" class="form-hint"></p></div>
+              <button id="collapseTrainingReception" class="button quiet" type="button">접기</button>
+            </div>
+            <div class="reception-status-card">
+              <span id="receptionStatusBadge" class="reception-status-badge" role="status" aria-live="polite">접수 전</span>
+              <output id="receptionCode" class="reception-code-output" aria-label="아직 발급된 현장 접수 코드가 없습니다" aria-live="polite">— — — — — —</output>
+              <p id="receptionCountdown" class="reception-countdown" aria-live="off"></p>
+              <p id="receptionCodeHint" class="form-hint">접수를 시작하면 이 화면에 코드가 한 번 표시됩니다.</p>
+              <p id="receptionError" class="form-error hidden" role="alert"></p>
+            </div>
+            <div class="reception-controls">
+              <label>접수 시간
+                <select id="receptionDuration">
+                  <option value="5" selected>5분</option>
+                  <option value="10">10분</option>
+                  <option value="15">15분</option>
+                </select>
+              </label>
+              <button id="startTrainingReception" class="button primary" type="button">접수 시작</button>
+              <button id="closeTrainingReception" class="button danger hidden" type="button">접수 종료</button>
+            </div>
+            <p class="form-hint reception-operation-hint">코드는 연수 현장에서만 알려 주세요. 새 코드를 발급하면 이전 코드는 즉시 사용할 수 없습니다.</p>
+          </section>
+        </div>
         <div id="trainingUnsignedPanelHome">
           <section id="trainingUnsignedPanel" class="training-tool-panel training-unsigned-panel hidden" aria-labelledby="trainingUnsignedTitle">
             <div class="training-tool-heading">
@@ -262,6 +295,13 @@
               <div id="trainingDepartmentChoices" class="training-department-choices"></div>
               <p class="form-hint">선택한 부서에 나중에 추가되는 구성원도 자동으로 대상에 포함됩니다.</p>
             </div>
+          </fieldset>
+          <fieldset class="training-checkin-fieldset">
+            <legend>현장 참석 확인</legend>
+            <label class="training-checkin-choice">
+              <input id="trainingOnsiteCodeRequired" type="checkbox">
+              <span><strong>현장 접수 코드 사용</strong><small>관리자가 현장 접수를 시작한 동안에만 6자리 코드를 입력해 서명할 수 있습니다.</small></span>
+            </label>
           </fieldset>
           <p id="trainingFormError" class="form-error hidden"></p>
           <div class="button-row"><button class="button primary" type="submit">저장</button><button id="cancelTraining" class="button secondary" type="button">취소</button></div>
