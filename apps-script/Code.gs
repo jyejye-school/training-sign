@@ -5,7 +5,7 @@
  */
 
 const APP = Object.freeze({
-  VERSION: '1.7.0',
+  VERSION: '1.8.0',
   TIME_ZONE: 'Asia/Seoul',
   DATA_FILE: '학교 연수 전자서명 데이터',
   GUIDE_SHEET: '사용설명서',
@@ -18,14 +18,18 @@ const APP = Object.freeze({
   MAX_EXPORT_ROWS: 200,
   EXPORT_BATCH_SIZE: 30,
   DOWNLOAD_CHUNK_SIZE: 1024 * 1024,
-  EXPORT_LEASE_MS: 7 * 60 * 1000
+  EXPORT_LEASE_MS: 7 * 60 * 1000,
+  ONSITE_CODE_MAX_FAILURES: 5,
+  ONSITE_CODE_MAX_SESSION_FAILURES: 50
 });
+
+const ONSITE_RECEPTION_PROPERTY_PREFIX_ = 'ONSITE_RECEPTION_';
 
 const SHEETS = Object.freeze({
   SETTINGS: { name: '설정', headers: ['key', 'value'] },
   STAFF: { name: '구성원', headers: ['id', 'department', 'name', 'active', 'sortOrder', 'createdAt'] },
-  TRAININGS: { name: '연수', headers: ['id', 'title', 'target', 'date', 'daily', 'startTime', 'endTime', 'active', 'sortOrder', 'createdAt', 'updatedAt', 'audienceMode', 'audienceDepartments'] },
-  SIGNATURES: { name: '서명', headers: ['id', 'trainingId', 'staffId', 'signDate', 'signTime', 'department', 'name', 'imageFileId', 'createdAt', 'scopeDate'] },
+  TRAININGS: { name: '연수', headers: ['id', 'title', 'target', 'date', 'daily', 'startTime', 'endTime', 'active', 'sortOrder', 'createdAt', 'updatedAt', 'audienceMode', 'audienceDepartments', 'onsiteCodeRequired'] },
+  SIGNATURES: { name: '서명', headers: ['id', 'trainingId', 'staffId', 'signDate', 'signTime', 'department', 'name', 'imageFileId', 'createdAt', 'scopeDate', 'verificationMethod', 'onsiteSessionId'] },
   EXPORTS: { name: '출력 작업', headers: ['jobId', 'trainingId', 'trainingTitle', 'date', 'sort', 'columns', 'showRate', 'status', 'progress', 'total', 'tempSpreadsheetId', 'pdfFileId', 'xlsxFileId', 'createdAt', 'updatedAt', 'error', 'purgedAt', 'outputType', 'previewFileId', 'printOpenedAt', 'signatureSnapshot'] },
   AUDIT: { name: '감사 기록', headers: ['timestamp', 'action', 'target', 'count', 'detail'] }
 });
@@ -37,7 +41,8 @@ const SETTING_KEYS = Object.freeze([
 
 const INSTANCE_PROPERTIES = Object.freeze([
   'SPREADSHEET_ID', 'INSTANCE_ID', 'ROOT_FOLDER_ID', 'SIGNATURE_FOLDER_ID', 'EXPORT_FOLDER_ID',
-  'SHARE_TOKEN', 'SETUP_CODE', 'ADMIN_PEPPER', 'ADMIN_EPOCH', 'ADMIN_SALT', 'ADMIN_HASH', 'FRONTEND_URL'
+  'SHARE_TOKEN', 'SETUP_CODE', 'ADMIN_PEPPER', 'ADMIN_EPOCH', 'ADMIN_SALT', 'ADMIN_HASH', 'FRONTEND_URL',
+  'ONSITE_CODE_SECRET'
 ]);
 
 let REQUEST_CONTEXT_ = null;
@@ -165,6 +170,9 @@ function dispatch_(request) {
   if (action === 'get_admin_data') return getAdminData_();
   if (action === 'get_admin_section') return getAdminSection_(request.section);
   if (action === 'get_training_signature_status') return getTrainingSignatureStatus_(request.trainingId, request.date);
+  if (action === 'get_training_reception_status') return getTrainingReception_(request.trainingId);
+  if (action === 'start_training_reception') return withAdminMutationLock_(function() { return startTrainingReception_(request.trainingId, request.durationMinutes); });
+  if (action === 'close_training_reception') return withAdminMutationLock_(function() { return closeTrainingReception_(request.trainingId); });
   if (action === 'save_settings') return withAdminMutationLock_(function() { return saveSettings_(request.settings, request.frontendUrl); });
   if (action === 'save_training') return withAdminMutationLock_(function() { return saveTraining_(request.training); });
   if (action === 'delete_training') return withAdminMutationLock_(function() { return deleteTraining_(request.trainingId); });
@@ -220,7 +228,8 @@ function initializeSystem() {
     EXPORT_FOLDER_ID: exportFolder.getId(),
     SHARE_TOKEN: properties.getProperty('SHARE_TOKEN') || randomToken_(24),
     ADMIN_PEPPER: properties.getProperty('ADMIN_PEPPER') || randomToken_(32),
-    ADMIN_EPOCH: properties.getProperty('ADMIN_EPOCH') || '1'
+    ADMIN_EPOCH: properties.getProperty('ADMIN_EPOCH') || '1',
+    ONSITE_CODE_SECRET: properties.getProperty('ONSITE_CODE_SECRET') || randomToken_(32)
   };
   if (!properties.getProperty('ADMIN_HASH')) secrets.SETUP_CODE = properties.getProperty('SETUP_CODE') || randomToken_(24);
   properties.setProperties(secrets, false);
@@ -400,6 +409,7 @@ function submitSignature_(request) {
   requireShareToken_(request.shareToken);
   const trainingId = id_(request.trainingId, '연수');
   const staffId = id_(request.staffId, '구성원');
+  const onsiteCode = request.onsiteCode;
   const signatureData = String(request.signatureData || '');
   if (signatureData.length > APP.MAX_SIGNATURE_BYTES * 1.5) apiError_('SIGNATURE_TOO_LARGE', '서명 이미지가 너무 큽니다. 다시 작성해 주세요.');
   const match = signatureData.match(/^data:image\/png;base64,([A-Za-z0-9+/=]+)$/);
@@ -410,7 +420,7 @@ function submitSignature_(request) {
 
   const training = findRow_(SHEETS.TRAININGS, 'id', trainingId);
   const person = findRow_(SHEETS.STAFF, 'id', staffId);
-  validateSigningWindow_(training, person);
+  validateSigningWindow_(training, person, onsiteCode, true);
   const fileCreatedAt = new Date();
   const fileDate = formatDate_(fileCreatedAt, 'yyyy-MM-dd');
   const folder = getOrCreateTrainingFolder_(trainingId, training.title);
@@ -425,7 +435,7 @@ function submitSignature_(request) {
     invalidateRows_(SHEETS.SIGNATURES);
     const freshTraining = findRow_(SHEETS.TRAININGS, 'id', trainingId);
     const freshPerson = findRow_(SHEETS.STAFF, 'id', staffId);
-    validateSigningWindow_(freshTraining, freshPerson);
+    const verification = validateSigningWindow_(freshTraining, freshPerson, onsiteCode, false);
     const now = new Date();
     const date = formatDate_(now, 'yyyy-MM-dd');
     const time = formatDate_(now, 'HH:mm:ss');
@@ -439,7 +449,9 @@ function submitSignature_(request) {
     appendObject_(SHEETS.SIGNATURES, {
       id: Utilities.getUuid(), trainingId: trainingId, staffId: staffId,
       signDate: date, signTime: time, department: freshPerson.department, name: freshPerson.name,
-      imageFileId: file.getId(), createdAt: now.toISOString(), scopeDate: scopeDate
+      imageFileId: file.getId(), createdAt: now.toISOString(), scopeDate: scopeDate,
+      verificationMethod: verification.verificationMethod,
+      onsiteSessionId: verification.onsiteSessionId
     });
     return { registeredAt: now.toISOString(), signDate: date, signTime: time };
   } catch (error) {
@@ -450,11 +462,12 @@ function submitSignature_(request) {
   }
 }
 
-function validateSigningWindow_(training, person) {
+function validateSigningWindow_(training, person, onsiteCode, recordOnsiteFailure) {
   if (!training || !bool_(training.active)) apiError_('TRAINING_CLOSED', '현재 서명할 수 없는 연수입니다.');
   if (!person || !bool_(person.active)) apiError_('STAFF_NOT_FOUND', '구성원 명단에서 확인할 수 없습니다.');
   if (!trainingTargetsStaff_(training, person)) apiError_('STAFF_NOT_TARGET', '이 연수의 서명 대상이 아닙니다.');
-  const today = today_();
+  const now = new Date();
+  const today = formatDate_(now, 'yyyy-MM-dd');
   const trainingDate = sheetDateText_(training.date);
   const startTime = sheetTimeText_(training.startTime, false);
   const endTime = sheetTimeText_(training.endTime, false);
@@ -463,11 +476,13 @@ function validateSigningWindow_(training, person) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(trainingDate)) apiError_('TRAINING_DATE', '연수 날짜가 올바르지 않습니다.');
     if (trainingDate > today) apiError_('TRAINING_DATE', trainingDate + '부터 서명할 수 있습니다.');
   }
+  const verification = validateTrainingReception_(training, person, onsiteCode, now, recordOnsiteFailure !== false);
   // 과거 고정 연수의 시각은 연수 당일 일정입니다. 재수합 중에는 활성 상태를 접수 스위치로 사용합니다.
-  if (!daily && trainingDate < today) return;
-  const nowTime = formatDate_(new Date(), 'HH:mm');
+  if (!daily && trainingDate < today) return verification;
+  const nowTime = formatDate_(now, 'HH:mm');
   if (startTime && nowTime < startTime) apiError_('TOO_EARLY', '아직 서명 가능 시간이 아닙니다. ' + startTime + '부터 서명할 수 있습니다.');
   if (endTime && nowTime > endTime) apiError_('TOO_LATE', '서명 가능 시간이 종료되었습니다.');
+  return verification;
 }
 
 function isTrainingPublicOnDate_(training, today) {
@@ -490,6 +505,291 @@ function trainingScopeDate_(training, date) {
     : sheetDateText_(training && training.date);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(scopeDate)) apiError_('TRAINING_DATE', '연수 기준 날짜가 올바르지 않습니다.');
   return scopeDate;
+}
+
+function getTrainingReception_(trainingId) {
+  const id = id_(trainingId, '연수');
+  const training = findRow_(SHEETS.TRAININGS, 'id', id);
+  if (!training) apiError_('NOT_FOUND', '연수를 찾을 수 없습니다.');
+  return publicTrainingReception_(training, readTrainingReceptionState_(id), new Date());
+}
+
+function startTrainingReception_(trainingId, durationMinutes) {
+  const id = id_(trainingId, '연수');
+  const duration = Number(durationMinutes);
+  if (!Number.isInteger(duration) || [5, 10, 15].indexOf(duration) < 0) {
+    apiError_('RECEPTION_DURATION', '현장 접수 시간은 5분·10분·15분 중에서 선택해 주세요.');
+  }
+  const training = findRow_(SHEETS.TRAININGS, 'id', id);
+  if (!training) apiError_('NOT_FOUND', '연수를 찾을 수 없습니다.');
+  if (!bool_(training.onsiteCodeRequired)) apiError_('RECEPTION_NOT_ENABLED', '이 연수는 현장 접수 코드를 사용하지 않습니다.');
+  if (!bool_(training.active) || trainingAudienceMode_(training) === 'invalid') {
+    apiError_('TRAINING_CLOSED', '현재 서명할 수 없는 연수입니다.');
+  }
+
+  const now = new Date();
+  const serverDate = formatDate_(now, 'yyyy-MM-dd');
+  const trainingDate = sheetDateText_(training.date);
+  if (!bool_(training.daily)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(trainingDate)) apiError_('TRAINING_DATE', '연수 날짜가 올바르지 않습니다.');
+    if (trainingDate > serverDate) apiError_('TRAINING_DATE', trainingDate + '부터 현장 접수를 시작할 수 있습니다.');
+  }
+  const schedule = trainingReceptionSchedule_(training, now);
+  if (schedule.beforeStart) apiError_('TOO_EARLY', '아직 서명 가능 시간이 아닙니다. ' + schedule.startTime + '부터 현장 접수를 시작할 수 있습니다.');
+  if (schedule.afterEnd) apiError_('TOO_LATE', '서명 가능 시간이 종료되어 현장 접수를 시작할 수 없습니다.');
+
+  const code = generateOnsiteCode_();
+  const properties = PropertiesService.getScriptProperties();
+  const propertyKey = trainingReceptionPropertyKey_(id);
+  const previousRawState = properties.getProperty(propertyKey);
+  const previousState = readTrainingReceptionState_(id);
+  const requestedExpiresAt = now.getTime() + duration * 60 * 1000;
+  const expiresAt = schedule.maxExpiresAt
+    ? Math.min(requestedExpiresAt, schedule.maxExpiresAt)
+    : requestedExpiresAt;
+  if (expiresAt <= now.getTime()) apiError_('TOO_LATE', '서명 가능 시간이 종료되어 현장 접수를 시작할 수 없습니다.');
+  const state = {
+    v: 1,
+    sessionId: randomToken_(18),
+    trainingId: id,
+    serverDate: serverDate,
+    scopeDate: trainingScopeDate_(training, serverDate),
+    salt: randomToken_(18),
+    codeHash: '',
+    startedAt: now.toISOString(),
+    expiresAt: new Date(expiresAt).toISOString(),
+    durationMinutes: duration,
+    failureTotal: 0,
+    failureCounts: {}
+  };
+  state.codeHash = onsiteCodeHash_(state, code);
+  properties.setProperty(propertyKey, JSON.stringify(state));
+  try {
+    audit_(
+      'start_training_reception',
+      id,
+      1,
+      training.title + ' · ' + duration + '분 · ' + state.scopeDate + ' · 세션 ' + state.sessionId +
+        (previousState ? ' · 기존 접수 교체' : '')
+    );
+  } catch (error) {
+    if (previousRawState === null) properties.deleteProperty(propertyKey);
+    else properties.setProperty(propertyKey, previousRawState);
+    throw error;
+  }
+  return Object.assign(publicTrainingReception_(training, state, now), { code: code });
+}
+
+function closeTrainingReception_(trainingId) {
+  const id = id_(trainingId, '연수');
+  const training = findRow_(SHEETS.TRAININGS, 'id', id);
+  if (!training) apiError_('NOT_FOUND', '연수를 찾을 수 없습니다.');
+  const state = removeTrainingReceptionState_(id);
+  if (state) {
+    auditReceptionBestEffort_('close_training_reception', id, 1, training.title + ' · 세션 ' + state.sessionId + ' · 관리자 종료');
+  }
+  return publicTrainingReception_(training, null, new Date());
+}
+
+function publicTrainingReception_(training, state, now) {
+  const required = bool_(training && training.onsiteCodeRequired);
+  const current = now instanceof Date ? now : new Date();
+  const open = required && isTrainingReceptionOpen_(training, state, current);
+  const status = open ? 'open' : required && state ? 'expired' : 'closed';
+  const expiresAt = state ? String(state.expiresAt || '') : '';
+  const scopeDate = state && /^\d{4}-\d{2}-\d{2}$/.test(String(state.scopeDate || ''))
+    ? String(state.scopeDate)
+    : bool_(training && training.daily)
+      ? formatDate_(current, 'yyyy-MM-dd')
+      : sheetDateText_(training && training.date);
+  const remainingSeconds = open
+    ? Math.max(0, Math.ceil((new Date(expiresAt).getTime() - current.getTime()) / 1000))
+    : 0;
+  return {
+    trainingId: String(training && training.id || ''),
+    date: scopeDate,
+    required: required,
+    status: status,
+    sessionId: state ? String(state.sessionId || '') : '',
+    startedAt: state ? String(state.startedAt || '') : '',
+    expiresAt: expiresAt,
+    durationMinutes: state ? number_(state.durationMinutes) : 0,
+    remainingSeconds: remainingSeconds
+  };
+}
+
+function validateTrainingReception_(training, person, onsiteCode, now, recordFailure) {
+  if (!bool_(training && training.onsiteCodeRequired)) {
+    return { verificationMethod: 'share_link', onsiteSessionId: '' };
+  }
+  if (recordFailure) {
+    return withAdminMutationLock_(function() {
+      return validateTrainingReceptionState_(training, person, onsiteCode, new Date(), true);
+    });
+  }
+  return validateTrainingReceptionState_(training, person, onsiteCode, now, false);
+}
+
+function validateTrainingReceptionState_(training, person, onsiteCode, now, recordFailure) {
+  const state = readTrainingReceptionState_(String(training.id || ''));
+  if (!isTrainingReceptionOpen_(training, state, now)) {
+    apiError_('TRAINING_RECEPTION_CLOSED', '현장 접수가 시작되지 않았거나 접수 시간이 종료되었습니다.');
+  }
+  assertOnsiteCodeAttemptsAvailable_(state, person);
+  const code = typeof onsiteCode === 'string' ? onsiteCode.trim() : '';
+  if (!code) apiError_('ONSITE_CODE_REQUIRED', '현장에서 안내된 6자리 접수 코드를 입력해 주세요.');
+  const valid = /^\d{6}$/.test(code) && safeEqual_(onsiteCodeHash_(state, code), state.codeHash);
+  if (!valid) {
+    const failures = recordFailure ? recordOnsiteCodeFailure_(state, person) : onsiteCodeFailureCount_(state, person);
+    if (failures >= APP.ONSITE_CODE_MAX_FAILURES || number_(state.failureTotal) >= APP.ONSITE_CODE_MAX_SESSION_FAILURES) {
+      apiError_('ONSITE_CODE_LOCKED', '현장 접수 코드를 여러 번 잘못 입력했습니다. 관리자에게 확인해 주세요.');
+    }
+    apiError_('ONSITE_CODE_INVALID', '현장 접수 코드가 올바르지 않습니다.');
+  }
+  if (recordFailure) clearOnsiteCodeFailures_(state, person);
+  return { verificationMethod: 'onsite_code', onsiteSessionId: state.sessionId };
+}
+
+function isTrainingReceptionOpen_(training, state, now) {
+  if (!training || !bool_(training.active) || !bool_(training.onsiteCodeRequired) || trainingAudienceMode_(training) === 'invalid') return false;
+  if (!state || String(state.trainingId || '') !== String(training.id || '')) return false;
+  const current = now instanceof Date ? now : new Date();
+  const startedAt = new Date(String(state.startedAt || '')).getTime();
+  const expiresAt = new Date(String(state.expiresAt || '')).getTime();
+  if (!startedAt || !expiresAt || startedAt > current.getTime() || expiresAt <= current.getTime()) return false;
+  const serverDate = formatDate_(current, 'yyyy-MM-dd');
+  if (String(state.serverDate || '') !== serverDate) return false;
+  const schedule = trainingReceptionSchedule_(training, current);
+  if (schedule.beforeStart || schedule.afterEnd) return false;
+  try {
+    return String(state.scopeDate || '') === trainingScopeDate_(training, serverDate);
+  } catch (error) {
+    return false;
+  }
+}
+
+function trainingReceptionSchedule_(training, now) {
+  const current = now instanceof Date ? now : new Date();
+  const today = formatDate_(current, 'yyyy-MM-dd');
+  const daily = bool_(training && training.daily);
+  const trainingDate = sheetDateText_(training && training.date);
+  const pastFixed = !daily && /^\d{4}-\d{2}-\d{2}$/.test(trainingDate) && trainingDate < today;
+  const startTime = sheetTimeText_(training && training.startTime, false);
+  const endTime = sheetTimeText_(training && training.endTime, false);
+  if (pastFixed) return { beforeStart: false, afterEnd: false, startTime: startTime, endTime: endTime, maxExpiresAt: 0 };
+  const nowTime = formatDate_(current, 'HH:mm');
+  const beforeStart = Boolean(startTime && nowTime < startTime);
+  const afterEnd = Boolean(endTime && nowTime > endTime);
+  let maxExpiresAt = 0;
+  if (endTime && !afterEnd) {
+    const nowParts = formatDate_(current, 'HH:mm:ss').split(':').map(Number);
+    const endParts = endTime.split(':').map(Number);
+    const nowOffset = ((nowParts[0] * 60 + nowParts[1]) * 60 + nowParts[2]) * 1000 + current.getMilliseconds();
+    const endOffset = ((endParts[0] * 60 + endParts[1] + 1) * 60) * 1000;
+    maxExpiresAt = current.getTime() + Math.max(0, endOffset - nowOffset);
+  }
+  return { beforeStart: beforeStart, afterEnd: afterEnd, startTime: startTime, endTime: endTime, maxExpiresAt: maxExpiresAt };
+}
+
+function readTrainingReceptionState_(trainingId) {
+  const id = String(trainingId || '');
+  if (!id) return null;
+  const raw = PropertiesService.getScriptProperties().getProperty(trainingReceptionPropertyKey_(id));
+  if (!raw) return null;
+  try {
+    const state = JSON.parse(raw);
+    if (!state || typeof state !== 'object' || Number(state.v) !== 1) return null;
+    if (String(state.trainingId || '') !== id || !/^[A-Za-z0-9_-]{8,100}$/.test(String(state.sessionId || ''))) return null;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(state.serverDate || '')) || !/^\d{4}-\d{2}-\d{2}$/.test(String(state.scopeDate || ''))) return null;
+    if (!String(state.salt || '') || !String(state.codeHash || '') || [5, 10, 15].indexOf(Number(state.durationMinutes)) < 0) return null;
+    if (!new Date(String(state.startedAt || '')).getTime() || !new Date(String(state.expiresAt || '')).getTime()) return null;
+    state.failureTotal = Math.max(0, Math.floor(number_(state.failureTotal)));
+    const failureCounts = state.failureCounts && typeof state.failureCounts === 'object' && !Array.isArray(state.failureCounts)
+      ? state.failureCounts
+      : {};
+    state.failureCounts = {};
+    Object.keys(failureCounts).slice(0, APP.MAX_STAFF).forEach(function(key) {
+      if (/^[A-Za-z0-9_-]{8,24}$/.test(key)) state.failureCounts[key] = Math.max(0, Math.floor(number_(failureCounts[key])));
+    });
+    return state;
+  } catch (error) {
+    return null;
+  }
+}
+
+function removeTrainingReceptionState_(trainingId) {
+  const id = String(trainingId || '');
+  const state = readTrainingReceptionState_(id);
+  PropertiesService.getScriptProperties().deleteProperty(trainingReceptionPropertyKey_(id));
+  return state;
+}
+
+function trainingReceptionPropertyKey_(trainingId) {
+  return ONSITE_RECEPTION_PROPERTY_PREFIX_ + String(trainingId || '');
+}
+
+function onsiteCodeHash_(state, code) {
+  const properties = PropertiesService.getScriptProperties();
+  let secret = properties.getProperty('ONSITE_CODE_SECRET');
+  if (!secret) {
+    secret = randomToken_(32);
+    properties.setProperty('ONSITE_CODE_SECRET', secret);
+  }
+  const message = [
+    String(state.v || 1),
+    properties.getProperty('INSTANCE_ID') || '',
+    String(state.trainingId || ''),
+    String(state.sessionId || ''),
+    String(state.serverDate || ''),
+    String(state.scopeDate || ''),
+    String(state.salt || ''),
+    String(state.startedAt || ''),
+    String(state.expiresAt || ''),
+    String(code || '')
+  ].join('\n');
+  const bytes = Utilities.computeHmacSha256Signature(message, secret, Utilities.Charset.UTF_8);
+  return Utilities.base64EncodeWebSafe(bytes).replace(/=+$/, '');
+}
+
+function generateOnsiteCode_() {
+  const seed = Utilities.getUuid() + ':' + Utilities.getUuid() + ':' + new Date().getTime() + ':' + Math.random();
+  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, seed, Utilities.Charset.UTF_8);
+  const value = (((bytes[0] & 255) * 0x1000000) + ((bytes[1] & 255) << 16) + ((bytes[2] & 255) << 8) + (bytes[3] & 255)) >>> 0;
+  return String(100000 + (value % 900000));
+}
+
+function assertOnsiteCodeAttemptsAvailable_(state, person) {
+  const count = onsiteCodeFailureCount_(state, person);
+  if (count >= APP.ONSITE_CODE_MAX_FAILURES || number_(state.failureTotal) >= APP.ONSITE_CODE_MAX_SESSION_FAILURES) {
+    apiError_('ONSITE_CODE_LOCKED', '현장 접수 코드를 여러 번 잘못 입력했습니다. 관리자에게 확인해 주세요.');
+  }
+}
+
+function recordOnsiteCodeFailure_(state, person) {
+  const key = onsiteCodeFailureKey_(person);
+  const count = onsiteCodeFailureCount_(state, person) + 1;
+  state.failureCounts = state.failureCounts || {};
+  state.failureCounts[key] = count;
+  state.failureTotal = number_(state.failureTotal) + 1;
+  PropertiesService.getScriptProperties().setProperty(trainingReceptionPropertyKey_(state.trainingId), JSON.stringify(state));
+  return count;
+}
+
+function clearOnsiteCodeFailures_(state, person) {
+  const key = onsiteCodeFailureKey_(person);
+  if (!state.failureCounts || !Object.prototype.hasOwnProperty.call(state.failureCounts, key)) return;
+  delete state.failureCounts[key];
+  PropertiesService.getScriptProperties().setProperty(trainingReceptionPropertyKey_(state.trainingId), JSON.stringify(state));
+}
+
+function onsiteCodeFailureCount_(state, person) {
+  const counts = state && state.failureCounts && typeof state.failureCounts === 'object' ? state.failureCounts : {};
+  return Math.max(0, Math.floor(number_(counts[onsiteCodeFailureKey_(person)])));
+}
+
+function onsiteCodeFailureKey_(person) {
+  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(person && person.id || ''), Utilities.Charset.UTF_8);
+  return Utilities.base64EncodeWebSafe(bytes).replace(/=+$/, '').slice(0, 16);
 }
 
 function getAdminData_() {
@@ -599,6 +899,19 @@ function saveTraining_(input) {
     appendObject_(SHEETS.TRAININGS, training);
     stored = training;
   }
+  if (existing) {
+    const receptionMustClose = !bool_(stored.active) || !bool_(stored.onsiteCodeRequired) ||
+      bool_(existing.data.daily) !== bool_(stored.daily) ||
+      sheetDateText_(existing.data.date) !== sheetDateText_(stored.date) ||
+      sheetTimeText_(existing.data.startTime, false) !== sheetTimeText_(stored.startTime, false) ||
+      sheetTimeText_(existing.data.endTime, false) !== sheetTimeText_(stored.endTime, false);
+    if (receptionMustClose) {
+      const closedState = removeTrainingReceptionState_(stored.id);
+      if (closedState) {
+        auditReceptionBestEffort_('close_training_reception', stored.id, 1, stored.title + ' · 세션 ' + closedState.sessionId + ' · 연수 설정 변경으로 자동 종료');
+      }
+    }
+  }
   audit_('save_training', stored.id, 1, stored.title);
   return { training: publicTraining_(stored) };
 }
@@ -646,12 +959,24 @@ function normalizeTraining_(input) {
     normalized.audienceMode = audienceMode;
     normalized.audienceDepartments = audienceMode === 'departments' ? JSON.stringify(departments) : '';
   }
+  if (input && Object.prototype.hasOwnProperty.call(input, 'onsiteCodeRequired')) {
+    if (typeof input.onsiteCodeRequired !== 'boolean') {
+      apiError_('VALIDATION', '현장 접수 코드 사용 여부가 올바르지 않습니다.');
+    }
+    normalized.onsiteCodeRequired = input.onsiteCodeRequired;
+  }
   return normalized;
 }
 
 function deleteTraining_(trainingId) {
   const id = id_(trainingId, '연수');
+  const training = findRow_(SHEETS.TRAININGS, 'id', id);
+  if (!training) apiError_('NOT_FOUND', '연수를 찾을 수 없습니다.');
+  const closedState = removeTrainingReceptionState_(id);
   deleteRowById_(SHEETS.TRAININGS, id);
+  if (closedState) {
+    auditReceptionBestEffort_('close_training_reception', id, 1, training.title + ' · 세션 ' + closedState.sessionId + ' · 연수 삭제로 자동 종료');
+  }
   audit_('delete_training', id, 1, '서명 기록은 유지');
   return { deleted: true, deletedId: id };
 }
@@ -786,7 +1111,18 @@ function listRecords_(trainingId, date) {
       return row.trainingId === id && signatureMatchesTrainingDate_(row, training, signDate);
     })
     .sort(function(a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); })
-    .map(function(row) { return { id: row.id, trainingId: row.trainingId, signDate: sheetDateText_(row.signDate), signTime: sheetTimeText_(row.signTime, true), department: row.department, name: row.name }; });
+    .map(function(row) {
+      return {
+        id: row.id,
+        trainingId: row.trainingId,
+        signDate: sheetDateText_(row.signDate),
+        signTime: sheetTimeText_(row.signTime, true),
+        department: row.department,
+        name: row.name,
+        verificationMethod: String(row.verificationMethod || 'legacy'),
+        onsiteSessionId: String(row.onsiteSessionId || '')
+      };
+    });
   return { records: records };
 }
 
@@ -1583,6 +1919,29 @@ function cleanupStaleExportJobs() {
       updateExportJob_(item.rowNumber, { status: 'expired', tempSpreadsheetId: '', previewFileId: '', error: '24시간이 지나 자동 정리됨' });
     }
   });
+  cleanupExpiredTrainingReceptions_();
+}
+
+function cleanupExpiredTrainingReceptions_() {
+  return withAdminMutationLock_(function() {
+    const properties = PropertiesService.getScriptProperties();
+    const all = properties.getProperties();
+    const now = new Date();
+    const today = formatDate_(now, 'yyyy-MM-dd');
+    let cleaned = 0;
+    Object.keys(all).forEach(function(key) {
+      if (key.indexOf(ONSITE_RECEPTION_PROPERTY_PREFIX_) !== 0) return;
+      const trainingId = key.slice(ONSITE_RECEPTION_PROPERTY_PREFIX_.length);
+      const state = readTrainingReceptionState_(trainingId);
+      const expiresAt = state ? new Date(String(state.expiresAt || '')).getTime() : 0;
+      if (!state || !expiresAt || expiresAt <= now.getTime() || String(state.serverDate || '') !== today) {
+        properties.deleteProperty(key);
+        cleaned += 1;
+      }
+    });
+    if (cleaned) auditReceptionBestEffort_('cleanup_training_reception', 'reception', cleaned, '만료되거나 손상된 현장 접수 상태 정리');
+    return cleaned;
+  });
 }
 
 function updateExportJob_(rowNumber, changes) {
@@ -1644,6 +2003,9 @@ function dataSheetDefinitions_() {
 
 function clearCopiedInstanceProperties_(properties) {
   INSTANCE_PROPERTIES.forEach(function(key) { properties.deleteProperty(key); });
+  Object.keys(properties.getProperties()).forEach(function(key) {
+    if (key.indexOf(ONSITE_RECEPTION_PROPERTY_PREFIX_) === 0) properties.deleteProperty(key);
+  });
 }
 
 function getOrRepairFolder_(properties, propertyKey, parentFolder, name) {
@@ -1756,7 +2118,7 @@ function ensureGuideSheet_(spreadsheet, rebuild) {
         ['1', '관리자 비밀번호 만들기', '초기 설정 코드와 관리자 비밀번호를 입력합니다.', '숫자 4자리 또는 문자·숫자를 포함한 10자 이상 비밀번호를 사용할 수 있습니다.'],
         ['2', '기관 설정 입력', '기관 설정에서 학교명·부제목·안내문·개인정보 처리 안내·대표 색상을 저장합니다.', '개인정보 안내가 비어 있으면 연수를 활성화할 수 없습니다.'],
         ['3', '구성원 등록', '구성원에서 부서와 성명을 등록합니다.', '이름은 띄어쓰기·쉼표·줄바꿈으로 여러 명을 한 번에 입력하거나 엑셀·CSV를 가져올 수 있습니다.'],
-        ['4', '연수 등록', '연수에서 날짜·시간·활성 상태와 서명 대상(전체 구성원 또는 부서 선택)을 정합니다.', '선택한 부서에 나중에 등록되는 구성원도 자동으로 대상에 포함됩니다. 지난 연수도 활성화하면 재수합할 수 있습니다.'],
+        ['4', '연수 등록', '연수에서 날짜·시간·활성 상태와 서명 대상(전체 구성원 또는 부서 선택)을 정합니다.', '현장 확인이 필요한 연수만 현장 접수 코드 사용을 켭니다. 기존 연수와 이 설정을 끈 연수는 코드 없이 운영됩니다.'],
         ['5', '공유 링크 배포', '공유·보안에서 참여 링크와 QR을 복사해 학교 내부에 안내합니다.', '링크를 받은 사람은 별도 Google 계정 없이 접속합니다.']
       ]
     },
@@ -1765,7 +2127,7 @@ function ensureGuideSheet_(spreadsheet, rebuild) {
       color: '#165DFF',
       pale: '#F4F8FF',
       steps: [
-        ['1', '참여 화면 점검', '연수 날짜·시간·활성 상태를 확인하고 공유 링크를 휴대폰에서도 열어 봅니다.', '지난 고정 연수는 활성 상태인 동안 접수되며 미래 연수는 날짜가 될 때까지 표시되지 않습니다.'],
+        ['1', '현장 접수와 참여', '연수 카드에서 5분·10분·15분 중 접수 시간을 고르고 현장 접수를 시작한 뒤 화면의 6자리 코드를 참석자에게 안내합니다.', '코드 재발급·접수 종료 시 이전 코드는 즉시 무효화되며, 오늘·매일 연수는 등록된 종료 시각에 맞춰 접수도 끝납니다.'],
         ['2', '서명 기록 확인', '서명 기록에서 연수를 선택하면 해당 연수 날짜가 자동으로 설정됩니다.', '잘못 제출된 기록은 개별 삭제할 수 있습니다.'],
         ['3', '출력 미리보기', '연수 목록의 출력 버튼에서 날짜·열 수·정렬·서명률·PDF/엑셀/인쇄를 고릅니다.', '실제 서명 이미지가 들어간 A4 미리보기를 먼저 확인합니다.'],
         ['4', '파일 보관', 'PDF 또는 엑셀을 내려받아 학교가 정한 보관 위치에 저장합니다.', '인쇄하기만 실행한 작업은 원본 삭제 조건을 충족하지 않습니다.'],
@@ -2058,7 +2420,8 @@ function publicTraining_(row) {
   return {
     id: String(row.id), title: String(row.title), date: sheetDateText_(row.date), daily: bool_(row.daily),
     startTime: sheetTimeText_(row.startTime, false), endTime: sheetTimeText_(row.endTime, false), active: bool_(row.active), sortOrder: number_(row.sortOrder),
-    audienceMode: audienceMode, audienceDepartments: trainingAudienceDepartments_(row)
+    audienceMode: audienceMode, audienceDepartments: trainingAudienceDepartments_(row),
+    onsiteCodeRequired: bool_(row.onsiteCodeRequired)
   };
 }
 
@@ -2099,6 +2462,14 @@ function assertFileExists_(fileId) {
 
 function audit_(action, target, count, detail) {
   appendObject_(SHEETS.AUDIT, { timestamp: new Date().toISOString(), action: action, target: String(target || ''), count: number_(count), detail: String(detail || '').slice(0, 500) });
+}
+
+function auditReceptionBestEffort_(action, target, count, detail) {
+  try {
+    audit_(action, target, count, detail);
+  } catch (error) {
+    console.error('현장 접수 감사 기록 저장 실패: ' + String(error && error.message || error));
+  }
 }
 
 function ensureCleanupTrigger_() {

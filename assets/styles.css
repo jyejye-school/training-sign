@@ -66,6 +66,10 @@ h2, h3 { letter-spacing: -.025em; }
 .choice-meta { display: flex; flex-wrap: wrap; gap: .45rem; margin-top: .35rem; }
 .pill { display: inline-flex; border-radius: 999px; padding: .27rem .55rem; background: var(--brand-soft); color: var(--brand-dark) !important; font-size: .76rem; font-weight: 750; }
 .selection-summary { margin: .85rem 0 1.25rem; border-left: 4px solid var(--brand); padding: .7rem .85rem; background: var(--brand-soft); color: #344a44; border-radius: 0 10px 10px 0; }
+.onsite-code-entry { display: grid; gap: .45rem; margin: 0 0 1rem; border: 1px solid color-mix(in srgb, var(--brand) 28%, var(--line)); border-radius: 14px; padding: .9rem; background: var(--brand-soft); }
+.onsite-code-entry label { color: var(--brand-dark); font-weight: 850; }
+.onsite-code-input { width: min(100%, 17rem); min-height: 50px; font-size: 1.22rem; font-weight: 850; font-variant-numeric: tabular-nums; letter-spacing: .28em; text-align: center; }
+.onsite-code-entry .form-hint, .onsite-code-entry .form-error { margin: 0; }
 .form-grid { display: grid; gap: 1rem; }
 .two-column { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .three-column { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -180,8 +184,8 @@ body[data-panel="trainingPanel"] .site-footer { flex: 0 0 auto; padding: .55rem 
 .section-heading h3 { margin-bottom: .25rem; }
 .section-heading p { margin: 0; color: var(--muted); }
 .subcard { display: grid; gap: 1rem; margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--line); border-radius: 16px; background: #fbfcfc; }
-.training-audience-fieldset { min-width: 0; margin: 0; border: 1px solid var(--line); border-radius: 14px; padding: .9rem; background: #fff; }
-.training-audience-fieldset legend { padding: 0 .35rem; color: var(--ink); font-weight: 850; }
+.training-audience-fieldset, .training-checkin-fieldset { min-width: 0; margin: 0; border: 1px solid var(--line); border-radius: 14px; padding: .9rem; background: #fff; }
+.training-audience-fieldset legend, .training-checkin-fieldset legend { padding: 0 .35rem; color: var(--ink); font-weight: 850; }
 .training-audience-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; }
 .training-audience-modes > label { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: .55rem; min-width: 0; border: 1px solid var(--line); border-radius: 12px; padding: .75rem; cursor: pointer; }
 .training-audience-modes input, .training-department-choice input { width: 18px; min-height: 18px; margin: .1rem 0 0; accent-color: var(--brand); }
@@ -194,6 +198,10 @@ body[data-panel="trainingPanel"] .site-footer { flex: 0 0 auto; padding: .55rem 
 .training-department-choice small { grid-column: 2; color: var(--muted); font-size: .68rem; }
 .training-department-empty { grid-column: 1 / -1; margin: 0; color: var(--muted); text-align: center; }
 .training-department-choices-wrap .form-hint { margin: .65rem 0 0; }
+.training-checkin-choice { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: .6rem; border-radius: 12px; padding: .75rem; background: var(--brand-soft); cursor: pointer; }
+.training-checkin-choice input { width: 18px; min-height: 18px; margin: .1rem 0 0; accent-color: var(--brand); }
+.training-checkin-choice strong, .training-checkin-choice small { display: block; }
+.training-checkin-choice small { margin-top: .2rem; color: var(--muted); font-size: .76rem; line-height: 1.45; }
 .admin-list { display: grid; gap: .6rem; }
 .training-admin-item { display: grid; gap: .6rem; }
 .training-tool-slot:empty { display: none; }
@@ -201,6 +209,17 @@ body[data-panel="trainingPanel"] .site-footer { flex: 0 0 auto; padding: .55rem 
 .training-tool-heading, .training-export-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
 .training-tool-heading h4, .training-tool-heading p, .training-export-heading h4, .training-export-heading p { margin-bottom: 0; }
 .training-tool-heading .form-hint, .training-export-heading .form-hint { margin-top: .3rem; }
+.reception-status-card { display: grid; justify-items: center; gap: .55rem; border: 1px solid color-mix(in srgb, var(--brand) 28%, var(--line)); border-radius: 15px; padding: 1rem; background: #fff; text-align: center; }
+.reception-status-badge { display: inline-flex; border-radius: 999px; padding: .3rem .65rem; background: #f1f3f2; color: #5c6965; font-size: .77rem; font-weight: 850; }
+.reception-status-badge[data-status="open"] { background: var(--brand-soft); color: var(--brand-dark); }
+.reception-status-badge[data-status="expired"] { background: #fff3e8; color: #8a541d; }
+.reception-status-badge[data-status="loading"] { background: #f1f3f2; color: var(--muted); }
+.reception-code-output { display: block; max-width: 100%; color: var(--ink); font-size: clamp(2rem, 8vw, 3.8rem); font-weight: 950; font-variant-numeric: tabular-nums; letter-spacing: .14em; line-height: 1.1; overflow-wrap: anywhere; }
+.reception-countdown { min-height: 1.35em; margin: 0; color: var(--brand-dark); font-weight: 850; font-variant-numeric: tabular-nums; }
+.reception-status-card .form-hint, .reception-status-card .form-error { margin: 0; }
+.reception-controls { display: grid; grid-template-columns: minmax(150px, .7fr) minmax(130px, auto) minmax(130px, auto); align-items: end; gap: .7rem; }
+.reception-controls .button { min-width: 0; }
+.reception-operation-hint { margin: -.25rem 0 0; }
 .training-export-panel .subcard { margin-bottom: 0; background: #fff; }
 .training-export-history h4 { margin-bottom: .65rem; }
 .unsigned-status-controls { display: grid; grid-template-columns: minmax(170px, .7fr) minmax(230px, 1fr) max-content; align-items: end; gap: .75rem; }
@@ -242,6 +261,9 @@ body[data-panel="trainingPanel"] .site-footer { flex: 0 0 auto; padding: .55rem 
 .admin-row-main { min-width: 0; }
 .admin-row-main strong { display: block; }
 .admin-row-main small { color: var(--muted); }
+.record-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin-top: .16rem; }
+.record-verification { display: inline-flex; border-radius: 999px; padding: .16rem .42rem; background: #f1f3f2; color: #66736f; font-size: .68rem; font-weight: 800; }
+.record-verification.onsite { background: var(--brand-soft); color: var(--brand-dark); }
 .row-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .35rem; }
 .row-actions button { min-height: 34px; border: 1px solid var(--line); border-radius: 9px; background: #fff; padding: .35rem .55rem; color: #40504b; font-size: .78rem; font-weight: 750; }
 .row-actions button.danger { color: var(--danger); border-color: #edc7c3; }
@@ -298,6 +320,9 @@ body[data-panel="trainingPanel"] .site-footer { flex: 0 0 auto; padding: .55rem 
   .training-tool-heading, .training-export-heading { align-items: stretch; flex-direction: column; }
   .training-tool-heading .button, .training-export-heading .button { align-self: flex-start; }
   .unsigned-status-controls { grid-template-columns: 1fr; align-items: stretch; }
+  .reception-controls { grid-template-columns: 1fr; align-items: stretch; }
+  .reception-code-output { font-size: clamp(1.85rem, 12vw, 3rem); letter-spacing: .1em; }
+  .onsite-code-input { width: 100%; min-height: 48px; font-size: 1.05rem; }
   .unsigned-status-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .unsigned-status-table { min-width: 0; font-size: .78rem; }
   .unsigned-status-table th, .unsigned-status-table td { padding: .58rem .42rem; }
